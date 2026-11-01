@@ -1,0 +1,10 @@
+﻿faster-whisper
+sounddevice
+numpy
+pynput
+pyperclip
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+customtkinter==5.2.2
+pystray
+pillow

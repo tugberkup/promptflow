@@ -1,0 +1,5 @@
+* text=auto
+# cmd.exe, LF satır sonlu .bat dosyalarında goto/etiketleri yanlış okuyabiliyor
+*.bat text eol=crlf
+*.ico binary
+*.png binary

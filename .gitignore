@@ -1,0 +1,12 @@
+# Kişisel veriler: her kullanıcının kendi bilgisayarında oluşur
+gecmis.txt
+sozluk.txt
+ayarlar.json
+promptflow.log
+PromptFlow.lnk
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
