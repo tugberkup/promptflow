@@ -36,14 +36,17 @@ jobs:
           - name: Windows x64
             os: windows-latest
             artifact: promptflow-windows-x64
+            arch: x64
             # Short target dir: whisper.cpp's CMake build breaks on long paths (MAX_PATH).
             target_dir: 'C:\t'
           - name: macOS arm64
             os: macos-14
             artifact: promptflow-macos-arm64
+            arch: aarch64
           - name: macOS x64
             os: macos-15-intel
             artifact: promptflow-macos-x64
+            arch: x64
     env:
       CARGO_TARGET_DIR: ${{ matrix.target_dir || format('{0}/rust/src-tauri/target', github.workspace) }}
     defaults:
@@ -126,7 +129,7 @@ jobs:
             cp "$bundle"/dmg/*.dmg "$out"/
             # Zip the .app with ditto so permissions and signatures survive upload.
             for app in "$bundle"/macos/*.app; do
-              ditto -c -k --keepParent "$app" "$out/$(basename "$app" .app)-${{ matrix.artifact }}.app.zip"
+              ditto -c -k --keepParent "$app" "$out/$(basename "$app" .app)_${{ matrix.arch }}.app.zip"
             done
           fi
           echo "dir=$out" >> "$GITHUB_OUTPUT"
