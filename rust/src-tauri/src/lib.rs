@@ -6,6 +6,7 @@ mod catalog;
 mod engine;
 mod hardware;
 mod hotkey;
+mod migrate;
 mod paste;
 mod settings;
 mod stt;
@@ -441,7 +442,11 @@ pub fn run() {
         .setup(|app| {
             thread::spawn(hardware); // detect the GPU early; the catalog needs it
             let data_dir = app.path().app_data_dir()?;
+            let imported = migrate::import_once(&data_dir);
             let engine = Engine::new(app.handle().clone(), data_dir);
+            if let Some(old) = imported {
+                engine.log(format!("Imported history, dictionary and settings from PromptFlow 1.x in {}", old.display()));
+            }
             app.manage(engine.clone());
 
             // Started at login with --hidden: stay in the tray / menu bar
