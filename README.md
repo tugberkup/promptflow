@@ -10,8 +10,9 @@ No audio ever leaves your computer, there's no subscription, and once it's set u
 <p align="center"><img src="docs/screenshot.png" width="420" alt="PromptFlow window"></p>
 
 > **macOS support is in beta.** It's built and tested automatically on Apple Silicon and Intel Macs, but it has had
-> less real-world use than the Windows version. If something doesn't work on your Mac,
-> [open an issue](https://github.com/tugberkup/promptflow/issues) with your Mac model, macOS version and `promptflow.log`.
+> less real-world use than the Windows version. Tried it on your Mac? Please fill in the short
+> [macOS test report](https://github.com/tugberkup/promptflow/issues/new?template=macos-test-report.md),
+> whether it worked or not.
 
 ## Features
 
