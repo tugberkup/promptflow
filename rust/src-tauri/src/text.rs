@@ -29,10 +29,12 @@ pub fn is_hallucination(text: &str) -> bool {
     HALLUCINATIONS.contains(&text.trim().to_lowercase().as_str())
 }
 
+type Rules = Vec<(Regex, String)>;
+
 /// dictionary.txt, reloaded whenever the file changes.
 pub struct Dictionary {
     path: PathBuf,
-    cache: Mutex<(Option<SystemTime>, Vec<(Regex, String)>)>,
+    cache: Mutex<(Option<SystemTime>, Rules)>,
 }
 
 impl Dictionary {
@@ -43,7 +45,7 @@ impl Dictionary {
         Self { path, cache: Mutex::new((None, Vec::new())) }
     }
 
-    fn rules(&self) -> Vec<(Regex, String)> {
+    fn rules(&self) -> Rules {
         let mut cache = self.cache.lock().unwrap();
         let mtime = fs::metadata(&self.path).and_then(|m| m.modified()).ok();
         if mtime != cache.0 || mtime.is_none() {
@@ -72,7 +74,7 @@ impl Dictionary {
     }
 }
 
-pub fn parse_dictionary(source: &str) -> Vec<(Regex, String)> {
+pub fn parse_dictionary(source: &str) -> Rules {
     let mut rules = Vec::new();
     for line in source.trim_start_matches('\u{feff}').lines() {
         let line = line.trim();

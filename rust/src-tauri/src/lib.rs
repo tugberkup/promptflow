@@ -439,7 +439,7 @@ pub fn run() {
         ])
         .manage(Downloads::default())
         .setup(|app| {
-            thread::spawn(|| hardware()); // detect the GPU early; the catalog needs it
+            thread::spawn(hardware); // detect the GPU early; the catalog needs it
             let data_dir = app.path().app_data_dir()?;
             let engine = Engine::new(app.handle().clone(), data_dir);
             app.manage(engine.clone());

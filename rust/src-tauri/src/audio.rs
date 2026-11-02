@@ -115,7 +115,7 @@ pub fn read_wav(path: &std::path::Path) -> Option<Vec<f32>> {
         } else if id == b"data" && bits == 16 {
             let mono: Vec<f32> = body
                 .chunks_exact(2 * channels)
-                .map(|f| f.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0).sum::<f32>() / channels as f32)
+                .map(|f| f.as_chunks::<2>().0.iter().map(|s| i16::from_le_bytes(*s) as f32 / 32768.0).sum::<f32>() / channels as f32)
                 .collect();
             return Some(resample(&mono, rate));
         }
