@@ -127,7 +127,21 @@ button.copy { background: #45464d; border: 0; min-width: 72px; padding: 5px 10px
   background: var(--accent); cursor: pointer;
 }
 .picker:hover { background: var(--accent-hover); }
-.picker::after { content: "Change ›"; float: right; opacity: .75; font-size: 12.5px; }
+.picker { display: flex; justify-content: space-between; gap: 8px; }
+.picker em { font-style: normal; opacity: .75; font-size: 12.5px; white-space: nowrap; }
+
+.languages { background: var(--card); border-radius: 10px; padding: 10px 14px; margin: 8px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.chip {
+  border: 1px solid #55565e; background: transparent; border-radius: 14px; padding: 3px 12px; cursor: pointer;
+}
+.chip.on { background: var(--accent); border-color: var(--accent); }
+.chip.add { border-style: dashed; color: var(--muted); }
+.chips select { width: auto; padding: 3px 8px; border-radius: 14px; }
+.model .stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; margin-top: 2px; }
+.model .stats .good { color: #4ade80; }
+.model .stats .warn { color: #f0b35a; }
+.model.dim { opacity: .55; }
 
 /* Model catalog: a sheet over the whole window */
 .sheet {
@@ -165,7 +179,8 @@ button.copy { background: #45464d; border: 0; min-width: 72px; padding: 5px 10px
 .ai-box button { border: 0; border-radius: 6px; padding: 5px 14px; cursor: pointer; background: var(--accent); }
 
 footer { display: flex; justify-content: space-between; }
-footer button { border: 0; border-radius: 6px; padding: 7px 0; width: 140px; cursor: pointer; }
+footer { gap: 10px; }
+footer button { border: 0; border-radius: 6px; padding: 7px 14px; min-width: 140px; cursor: pointer; white-space: nowrap; }
 .primary { background: var(--accent); }
 .primary:hover { background: var(--accent-hover); }
 .secondary { background: #3f4046; }

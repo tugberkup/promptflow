@@ -6,6 +6,7 @@ mod catalog;
 mod engine;
 mod hardware;
 mod hotkey;
+mod locale;
 mod migrate;
 mod paste;
 mod settings;
@@ -39,7 +40,31 @@ const AUTOSTART_LABEL: &str = "Start at login";
 #[cfg(not(target_os = "macos"))]
 const AUTOSTART_LABEL: &str = "Start with Windows";
 
-struct PauseItem(MenuItem<Wry>);
+/// The tray menu's items, so the window can put them in its language.
+struct TrayMenu {
+    show: MenuItem<Wry>,
+    pause: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+    labels: Mutex<TrayLabels>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+struct TrayLabels {
+    show: String,
+    pause: String,
+    resume: String,
+    quit: String,
+}
+
+#[tauri::command]
+fn set_tray_labels(app: AppHandle, labels: TrayLabels) {
+    let menu = app.state::<TrayMenu>();
+    let paused = app.state::<Arc<Engine>>().paused.load(Ordering::Relaxed);
+    let _ = menu.show.set_text(&labels.show);
+    let _ = menu.pause.set_text(if paused { &labels.resume } else { &labels.pause });
+    let _ = menu.quit.set_text(&labels.quit);
+    *menu.labels.lock().unwrap() = labels;
+}
 
 #[derive(Serialize)]
 struct HistoryItem {
@@ -52,7 +77,8 @@ struct WindowState {
     version: &'static str,
     settings: Settings,
     hotkeys: Vec<(&'static str, &'static str)>,
-    languages: Vec<(&'static str, &'static str)>,
+    /// Every language the speech models know (codes; the window names them)
+    languages: Vec<(String, String)>,
     mics: Vec<String>,
     speech_models: Vec<String>,
     history: Vec<HistoryItem>,
@@ -61,6 +87,9 @@ struct WindowState {
     autostart: bool,
     tray_name: &'static str,
     autostart_label: &'static str,
+    /// Language of the window: the setting, or the OS interface language
+    ui_language: String,
+    os: &'static str,
 }
 
 /// Whisper models in the models folder (the catalog with downloads comes next).
@@ -101,7 +130,7 @@ fn get_state(app: AppHandle, engine: State<'_, Arc<Engine>>) -> WindowState {
         version: env!("CARGO_PKG_VERSION"),
         settings: engine.settings(),
         hotkeys: hotkey::HOTKEYS.to_vec(),
-        languages: ai::LANGUAGE_NAMES.to_vec(),
+        languages: catalog::languages().into_iter().map(|c| (c.clone(), c)).collect(),
         mics: audio::list_mics(),
         speech_models: speech_models(&engine),
         history: history(&engine),
@@ -110,6 +139,8 @@ fn get_state(app: AppHandle, engine: State<'_, Arc<Engine>>) -> WindowState {
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         tray_name: TRAY_NAME,
         autostart_label: AUTOSTART_LABEL,
+        ui_language: engine.settings().ui_language.unwrap_or_else(|| system_languages().ui.clone()),
+        os: std::env::consts::OS,
     }
 }
 
@@ -146,6 +177,12 @@ fn set_setting(app: AppHandle, engine: State<'_, Arc<Engine>>, key: String, valu
         "mic" => engine.settings.lock().unwrap().mic = text.filter(|m| !m.is_empty()),
         "language" => engine.settings.lock().unwrap().language = text.filter(|l| !l.is_empty()),
         "sounds" => engine.settings.lock().unwrap().sounds = value.as_bool().unwrap_or(false),
+        "ui_language" => {
+            let chosen = text.filter(|l| !l.is_empty() && l != "auto");
+            engine.settings.lock().unwrap().ui_language = chosen.clone();
+            // The pill window follows along
+            let _ = app.emit("ui_language", chosen.unwrap_or_else(|| system_languages().ui.clone()));
+        }
         "autostart" => {
             let launcher = app.autolaunch();
             let result = if value.as_bool().unwrap_or(false) { launcher.enable() } else { launcher.disable() };
@@ -203,6 +240,26 @@ struct CatalogState {
     hardware: hardware::Hardware,
     recommendation: catalog::Recommendation,
     current: String,
+    /// Languages the recommendation is for
+    languages: Vec<String>,
+    /// Languages found on this computer (interface language first), offered as quick picks
+    detected: Vec<String>,
+}
+
+static LANGUAGES: OnceLock<locale::Languages> = OnceLock::new();
+
+fn system_languages() -> &'static locale::Languages {
+    LANGUAGES.get_or_init(locale::detect)
+}
+
+fn speech_languages(settings: &Settings) -> Vec<String> {
+    settings.speech_languages.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| vec![system_languages().ui.clone()])
+}
+
+#[tauri::command]
+fn set_speech_languages(engine: State<'_, Arc<Engine>>, languages: Vec<String>) {
+    engine.settings.lock().unwrap().speech_languages = Some(languages).filter(|l| !l.is_empty());
+    engine.save_settings();
 }
 
 #[derive(Serialize, Clone)]
@@ -225,8 +282,10 @@ async fn get_catalog(engine: State<'_, Arc<Engine>>, downloads: State<'_, Downlo
             .iter()
             .map(|m| ModelInfo { model: *m, installed: dir.join(m.file).exists(), downloading: active.contains_key(m.id) })
             .collect(),
-        recommendation: catalog::recommend(&hw, settings.language.as_deref()),
+        recommendation: catalog::recommend(&hw, &speech_languages(&settings)),
         hardware: hw,
+        languages: speech_languages(&settings),
+        detected: system_languages().detected.clone(),
         current: settings.speech_model,
     })
 }
@@ -369,8 +428,11 @@ fn toggle_pause(app: &AppHandle) {
     let engine = app.state::<Arc<Engine>>();
     let paused = !engine.paused.load(Ordering::Relaxed);
     engine.paused.store(paused, Ordering::Relaxed);
-    let _ = app.state::<PauseItem>().0.set_text(if paused { "Resume" } else { "Pause" });
-    let _ = app.emit("engine", engine::EngineEvent { kind: if paused { "paused" } else { "resumed" }, text: String::new() });
+    let menu = app.state::<TrayMenu>();
+    let labels = menu.labels.lock().unwrap().clone();
+    let _ = menu.pause.set_text(if paused { labels.resume } else { labels.pause });
+    let kind = if paused { "paused" } else { "resumed" };
+    let _ = app.emit("engine", engine::EngineEvent { kind, text: String::new(), code: "" });
 }
 
 #[tauri::command]
@@ -458,7 +520,8 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .invoke_handler(tauri::generate_handler![
             get_state, ai_models, set_setting, open_data_file,
-            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level, missing_permissions, open_permission_settings
+            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level, missing_permissions, open_permission_settings,
+            set_speech_languages, set_tray_labels
         ])
         .manage(Downloads::default())
         .setup(|app| {
@@ -493,7 +556,8 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&show, &pause, &separator, &quit])?;
-            app.manage(PauseItem(pause));
+            let labels = TrayLabels { show: "Show".into(), pause: "Pause".into(), resume: "Resume".into(), quit: "Quit".into() };
+            app.manage(TrayMenu { show, pause, quit, labels: Mutex::new(labels) });
 
             TrayIconBuilder::with_id("main")
                 .icon(tray_image("idle"))

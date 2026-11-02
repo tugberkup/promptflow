@@ -26,6 +26,8 @@ pub const VAD_MODEL: &str = crate::catalog::VAD.file;
 pub struct EngineEvent {
     pub kind: &'static str,
     pub text: String,
+    /// For errors: a key the window translates ("mic_open", "model_load", ...); `text` is the detail
+    pub code: &'static str,
 }
 
 #[derive(Default)]
@@ -78,7 +80,12 @@ impl Engine {
     }
 
     pub fn emit(&self, kind: &'static str, text: impl Into<String>) {
-        let _ = self.app.emit("engine", EngineEvent { kind, text: text.into() });
+        let _ = self.app.emit("engine", EngineEvent { kind, text: text.into(), code: "" });
+    }
+
+    /// An error the window shows in its own language
+    pub fn emit_error(&self, code: &'static str, detail: impl Into<String>) {
+        let _ = self.app.emit("engine", EngineEvent { kind: "error", text: detail.into(), code });
     }
 
     pub fn settings(&self) -> Settings {
@@ -186,7 +193,7 @@ impl Engine {
             }
             Err(e) => {
                 self.log(format!("[model error] {e}"));
-                self.emit("error", format!("Couldn't load the speech model: {e}"));
+                self.emit_error("model_load", e.to_string());
             }
         }
     }
@@ -221,7 +228,7 @@ impl Engine {
                     }
                     Err(e) => {
                         self.log(format!("[microphone error] {e}"));
-                        self.emit("error", format!("Couldn't open the microphone: {e}"));
+                        self.emit_error("mic_open", e.to_string());
                     }
                 }
             }
@@ -279,7 +286,7 @@ impl Engine {
                 "The microphone only sent silence. Check the microphone picked in PromptFlow."
             };
             self.log(format!("[microphone] {hint}"));
-            self.emit("error", hint);
+            self.emit_error("mic_silent", "");
             return;
         }
         let s = self.settings();
@@ -288,7 +295,7 @@ impl Engine {
             Ok(r) => r,
             Err(e) => {
                 self.log(format!("[error] {e}"));
-                self.emit("error", e.to_string());
+                self.emit_error("", e.to_string());
                 return;
             }
         };
@@ -312,7 +319,7 @@ impl Engine {
         }
         if let Err(e) = paste::paste(&final_text, s.restore_clipboard, &|| self.press_paste_keys()) {
             self.log(format!("[paste error] {e}"));
-            self.emit("error", format!("Couldn't paste: {e}"));
+            self.emit_error("paste", e.to_string());
         }
         text::save_history(&self.history_file(), &raw, &final_text);
         self.emit("done", final_text);

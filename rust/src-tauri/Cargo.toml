@@ -31,10 +31,11 @@ sha2 = "0.10"
 sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+sys-locale = "0.3.2"
 
 [target."cfg(windows)".dependencies]
 whisper-rs = { version = "0.16.0", features = ["vulkan"] }
-windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Diagnostics_Debug"] }
+windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Diagnostics_Debug", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_TextServices", "Win32_Globalization"] }
 
 # Apple Silicon runs Whisper on the GPU with Metal; Intel Macs use the CPU (Metal hangs on some of their AMD GPUs)
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]

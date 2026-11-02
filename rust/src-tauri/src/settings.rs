@@ -22,6 +22,10 @@ pub struct Settings {
     /// File name of the Whisper model in the models folder
     pub speech_model: String,
     pub restore_clipboard: bool,
+    /// Languages the person speaks, for model recommendations; None = the OS interface language
+    pub speech_languages: Option<Vec<String>>,
+    /// Language of PromptFlow's own window; None = follow the OS
+    pub ui_language: Option<String>,
     /// Shorter presses are ignored
     pub min_seconds: f32,
 }
@@ -37,6 +41,8 @@ impl Default for Settings {
             sounds: false,
             speech_model: "ggml-large-v3-turbo-q5_0.bin".into(),
             restore_clipboard: true,
+            speech_languages: None,
+            ui_language: None,
             min_seconds: 0.4,
         }
     }

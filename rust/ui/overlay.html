@@ -10,6 +10,23 @@
 </head>
 <body>
   <canvas id="pill" width="420" height="88"></canvas>
+  <script src="i18n.js"></script>
+  <script src="locales/en.js"></script>
+  <script src="locales/es.js"></script>
+  <script src="locales/pt.js"></script>
+  <script src="locales/fr.js"></script>
+  <script src="locales/de.js"></script>
+  <script src="locales/it.js"></script>
+  <script src="locales/nl.js"></script>
+  <script src="locales/pl.js"></script>
+  <script src="locales/tr.js"></script>
+  <script src="locales/ru.js"></script>
+  <script src="locales/uk.js"></script>
+  <script src="locales/ja.js"></script>
+  <script src="locales/ko.js"></script>
+  <script src="locales/zh.js"></script>
+  <script src="locales/id.js"></script>
+  <script src="locales/vi.js"></script>
   <script>
     // The recording pill at the bottom of the screen. It never takes focus and lets clicks through;
     // it only draws while there's something to show.
@@ -49,7 +66,7 @@
         c.fillStyle = "#E5484D";
         c.beginPath(); c.arc(22, CY, r, 0, 2 * Math.PI); c.fill();
         c.fillStyle = "white";
-        c.fillText("Listening", 36, CY);
+        c.fillText(t("overlay.listening"), 36, CY);
         for (let i = 0; i < 5; i++) {
           const bar = 3 + 15 * smooth * (0.55 + 0.45 * Math.sin(phase * 0.5 + i * 1.3));
           c.fillStyle = "#E5484D";
@@ -57,7 +74,7 @@
         }
       } else if (mode === "processing") {
         c.fillStyle = "white";
-        c.fillText("Transcribing", 22, CY);
+        c.fillText(t("overlay.transcribing"), 22, CY);
         for (let i = 0; i < 3; i++) {
           const r = 2.5 + 1.5 * Math.max(0, Math.sin(phase * 0.3 - i * 0.9));
           c.fillStyle = "#E08A1E";
@@ -66,11 +83,13 @@
       } else {
         c.textAlign = "center";
         c.fillStyle = mode === "done" ? "#4ADE80" : "#F87171";
-        c.fillText(mode === "done" ? "✓  Pasted" : "!  Something went wrong", W / 2, CY);
+        c.fillText(t(mode === "done" ? "overlay.pasted" : "overlay.error"), W / 2, CY);
         c.textAlign = "left";
       }
     }
 
+    invoke("get_state").then((s) => setLanguage(s.ui_language));
+    listen("ui_language", ({ payload }) => setLanguage(payload));
     setInterval(draw, 40);
     setInterval(async () => {
       if (mode === "recording") level = await invoke("get_level");
