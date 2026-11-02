@@ -423,8 +423,11 @@ function renderWizard() {
     group.style.marginTop = "14px";
     for (const [m, tag] of suggestions()) group.append(modelCard(m, tag));
     box.append(group);
-    canContinue = catalog.models.some((m) => m.installed);
-    if (!canContinue) box.append(el("p", "muted small reason", t("onboarding.model.wait")));
+    // a download keeps going in the background, so it is enough that one has started
+    const installed = catalog.models.some((m) => m.installed);
+    const downloading = catalog.models.some((m) => m.downloading);
+    canContinue = installed || downloading;
+    if (!installed) box.append(el("p", "muted small reason", t(downloading ? "onboarding.model.background" : "onboarding.model.wait")));
   } else if (name === "permissions") {
     title("onboarding.permissions.title");
     sub("onboarding.permissions.subtitle");
@@ -461,17 +464,20 @@ function renderWizard() {
   const last = wizard.step === wizard.steps.length - 1;
   $("wizard-next").textContent = t(last ? "onboarding.finish" : "onboarding.continue");
   $("wizard-next").disabled = !canContinue;
+  $("wizard-skip").hidden = last;
   $("wizard-dots").replaceChildren(...wizard.steps.map((_, i) => el("span", i === wizard.step ? "on" : "")));
 }
 
+async function finishWizard() {
+  await invoke("finish_onboarding");
+  state.settings.ONBOARDED = true;
+  $("wizard").hidden = true;
+  await refresh();
+  if (!catalog.models.some((m) => m.installed)) showPage("models");
+}
+
 async function wizardNext() {
-  if (wizard.step === wizard.steps.length - 1) {
-    await invoke("finish_onboarding");
-    state.settings.ONBOARDED = true;
-    $("wizard").hidden = true;
-    await refresh();
-    return;
-  }
+  if (wizard.step === wizard.steps.length - 1) return finishWizard();
   wizard.step++;
   renderWizard();
 }
@@ -521,6 +527,7 @@ function wire() {
   $("about-data").onclick = () => invoke("open_data_file", { name: "folder" });
   $("about-wizard").onclick = startWizard;
   $("wizard-next").onclick = wizardNext;
+  $("wizard-skip").onclick = finishWizard;
   $("wizard-back").onclick = () => {
     wizard.step = Math.max(0, wizard.step - 1);
     renderWizard();

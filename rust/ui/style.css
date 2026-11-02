@@ -201,6 +201,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); outline
   display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 28px;
   border-top: 1px solid var(--line); background: var(--surface);
 }
+.wizard-actions { display: flex; align-items: center; gap: 16px; }
+.wizard-actions .link { font-size: 13px; }
+.wizard-actions .link[hidden] { display: none; }
 .steps { display: flex; gap: 6px; }
 .steps span { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
 .steps span.on { background: var(--accent); width: 22px; border-radius: 4px; }
