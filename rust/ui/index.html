@@ -7,99 +7,170 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <img class="logo" src="icon.png" alt="">
-    <div class="titles">
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand"><img src="icon.png" alt="">PromptFlow</div>
+    <button class="nav active" data-page="general">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      <span data-i18n="nav.general"></span>
+    </button>
+    <button class="nav" data-page="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span data-i18n="nav.history"></span>
+    </button>
+    <button class="nav" data-page="models">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>
+      <span data-i18n="nav.models"></span>
+    </button>
+    <button class="nav" data-page="ai">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+      <span data-i18n="nav.ai"></span>
+    </button>
+    <button class="nav" data-page="dictionary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20v3H6.5"/></svg>
+      <span data-i18n="nav.dictionary"></span>
+    </button>
+    <div class="spacer"></div>
+    <button class="nav" data-page="about">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+      <span data-i18n="nav.about"></span>
+    </button>
+  </nav>
+
+  <main>
+    <!-- General -->
+    <section class="page active" id="page-general">
+      <div id="permissions" class="banner" hidden>
+        <p id="permissions-text"></p>
+        <button class="btn primary" id="permissions-open"></button>
+      </div>
+      <div class="group status-card">
+        <span class="dot" id="status-dot"></span>
+        <div class="text">
+          <strong id="status"></strong>
+          <p class="muted small" id="hint"></p>
+        </div>
+        <span class="key" id="status-key"></span>
+      </div>
+
+      <div class="section-title" data-i18n="settings.mode"></div>
+      <div class="modes" id="mode">
+        <button class="mode" data-value="clean"><strong data-i18n="mode.clean"></strong><span data-i18n="mode.clean.hint"></span></button>
+        <button class="mode" data-value="prompt"><strong data-i18n="mode.prompt"></strong><span data-i18n="mode.prompt.hint"></span></button>
+        <button class="mode" data-value="raw"><strong data-i18n="mode.raw"></strong><span data-i18n="mode.raw.hint"></span></button>
+      </div>
+
+      <div class="section-title" data-i18n="section.dictation"></div>
+      <div class="group">
+        <div class="row"><span data-i18n="settings.hotkey"></span><select id="hotkey"></select></div>
+        <div class="row"><span data-i18n="settings.microphone"></span><select id="mic"></select></div>
+        <div class="row">
+          <div class="label"><span data-i18n="settings.dictation_language"></span><span class="small" data-i18n="settings.dictation_language.hint"></span></div>
+          <select id="language"></select>
+        </div>
+        <div class="row"><span data-i18n="settings.beeps"></span><label class="toggle"><input type="checkbox" id="sounds"><span></span></label></div>
+      </div>
+
+      <div class="section-title" data-i18n="section.app"></div>
+      <div class="group">
+        <div class="row"><span data-i18n="settings.interface_language"></span><select id="ui-language"></select></div>
+        <div class="row"><span id="autostart-label"></span><label class="toggle"><input type="checkbox" id="autostart"><span></span></label></div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="page" id="page-history">
+      <header><h1 data-i18n="nav.history"></h1><p class="muted" data-i18n="history.subtitle"></p></header>
+      <input type="search" class="search" id="history-search">
+      <div class="group" id="history-list"></div>
+      <p style="margin-top: 12px"><button class="btn" id="open-history" data-i18n="history.full"></button></p>
+    </section>
+
+    <!-- Models -->
+    <section class="page" id="page-models">
+      <header><h1 data-i18n="catalog.title"></h1><p class="muted small" id="catalog-hw"></p></header>
+      <div class="group languages">
+        <strong data-i18n="catalog.languages"></strong>
+        <div id="language-chips" class="chips"></div>
+        <p class="muted small" data-i18n="catalog.languages_hint"></p>
+      </div>
+      <p class="reason" id="catalog-reason"></p>
+      <div id="catalog-list"></div>
+    </section>
+
+    <!-- AI cleanup -->
+    <section class="page" id="page-ai">
+      <header><h1 data-i18n="nav.ai"></h1><p class="muted" data-i18n="ai.page_hint"></p></header>
+      <div class="group">
+        <div class="row">
+          <div class="label"><span data-i18n="settings.ai_model"></span><span class="small" id="ai-status"></span></div>
+          <select id="ai-model"></select>
+        </div>
+      </div>
+      <div class="section-title" data-i18n="ai.suggestion"></div>
+      <div class="group" id="ai-box" style="padding: 14px 16px"></div>
+    </section>
+
+    <!-- Dictionary -->
+    <section class="page" id="page-dictionary">
+      <header><h1 data-i18n="nav.dictionary"></h1><p class="muted" data-i18n="dictionary.hint"></p></header>
+      <div class="dict-head"><span data-i18n="dictionary.wrong"></span><span></span><span data-i18n="dictionary.right"></span><span></span></div>
+      <div class="group" id="dict-list"></div>
+      <p style="margin-top: 12px; display: flex; gap: 10px; align-items: center">
+        <button class="btn" id="dict-add" data-i18n="dictionary.add"></button>
+        <span class="muted small" id="dict-saved"></span>
+      </p>
+    </section>
+
+    <!-- About -->
+    <section class="page" id="page-about">
+      <img class="hero-logo" src="icon.png" alt="">
       <h1>PromptFlow</h1>
-      <p id="hint"></p>
-    </div>
-    <span id="status" class="status loading"></span>
-  </header>
+      <p class="muted" data-i18n="about.tagline"></p>
+      <p class="muted small" id="about-version" style="margin-top: 6px"></p>
+      <div class="group" style="margin-top: 22px">
+        <div class="row"><span data-i18n="about.github"></span><button class="btn" id="about-github" data-i18n="about.open"></button></div>
+        <div class="row"><span data-i18n="about.report"></span><button class="btn" id="about-issue" data-i18n="about.open"></button></div>
+        <div class="row"><span data-i18n="about.data_folder"></span><button class="btn" id="about-data" data-i18n="about.open"></button></div>
+        <div class="row"><span data-i18n="about.setup_again"></span><button class="btn" id="about-wizard" data-i18n="about.start"></button></div>
+      </div>
+      <p class="muted small" style="margin-top: 18px" data-i18n="about.credits"></p>
+    </section>
+  </main>
 
-  <section id="permissions" class="banner" hidden>
-    <p id="permissions-text"></p>
-    <button id="permissions-open"></button>
-  </section>
-
-  <section class="card settings">
-    <label data-i18n="settings.mode"></label>
-    <div class="segmented" id="mode">
-      <button data-value="clean" data-i18n="mode.clean"></button>
-      <button data-value="prompt" data-i18n="mode.prompt"></button>
-      <button data-value="raw" data-i18n="mode.raw"></button>
-    </div>
-    <span></span><p class="sub" id="mode-hint"></p>
-
-    <label for="ai-model" data-i18n="settings.ai_model"></label>
-    <select id="ai-model"></select>
-
-    <label for="speech-model" data-i18n="settings.speech_model"></label>
-    <button id="speech-model" class="picker"><span id="speech-model-name"></span><em data-i18n="settings.change"></em></button>
-
-    <label for="hotkey" data-i18n="settings.hotkey"></label>
-    <select id="hotkey"></select>
-
-    <label for="mic" data-i18n="settings.microphone"></label>
-    <select id="mic"></select>
-
-    <label for="language" data-i18n="settings.dictation_language"></label>
-    <select id="language"></select>
-
-    <label for="ui-language" data-i18n="settings.interface_language"></label>
-    <select id="ui-language"></select>
-
-    <div class="switches">
-      <label class="switch"><input type="checkbox" id="autostart"><span></span><em id="autostart-label"></em></label>
-      <label class="switch"><input type="checkbox" id="sounds"><span></span><em data-i18n="settings.beeps"></em></label>
-    </div>
-  </section>
-
-  <section class="card history">
-    <div class="history-top">
-      <h2 data-i18n="history.title"></h2>
-      <button class="ghost" id="open-history" data-i18n="history.full"></button>
-    </div>
-    <div id="history-list"></div>
-  </section>
-
-  <footer>
-    <button class="secondary" id="edit-dictionary" data-i18n="footer.dictionary"></button>
-    <button class="primary" id="hide"></button>
+  <footer class="statusbar">
+    <span><span class="dot" id="foot-dot"></span><span id="foot-model"></span></span>
+    <span id="foot-version"></span>
   </footer>
+</div>
 
-  <section id="catalog" class="sheet" hidden>
-    <div class="sheet-head">
-      <h2 data-i18n="catalog.title"></h2>
-      <button id="catalog-close" class="close" data-i18n-title="catalog.close">✕</button>
-    </div>
-    <p id="catalog-hw" class="sub"></p>
-    <div class="languages">
-      <strong data-i18n="catalog.languages"></strong>
-      <div id="language-chips" class="chips"></div>
-      <p class="sub" data-i18n="catalog.languages_hint"></p>
-    </div>
-    <p id="catalog-reason"></p>
-    <div id="catalog-list"></div>
-    <div id="ai-box" class="ai-box"></div>
-  </section>
+<!-- First-run wizard -->
+<div class="wizard" id="wizard" hidden>
+  <div class="wizard-body"><div class="wizard-step" id="wizard-step"></div></div>
+  <div class="wizard-foot">
+    <button class="btn" id="wizard-back" data-i18n="onboarding.back"></button>
+    <div class="steps" id="wizard-dots"></div>
+    <button class="btn primary" id="wizard-next" data-i18n="onboarding.continue"></button>
+  </div>
+</div>
 
-  <script src="i18n.js"></script>
-  <script src="locales/en.js"></script>
-  <script src="locales/es.js"></script>
-  <script src="locales/pt.js"></script>
-  <script src="locales/fr.js"></script>
-  <script src="locales/de.js"></script>
-  <script src="locales/it.js"></script>
-  <script src="locales/nl.js"></script>
-  <script src="locales/pl.js"></script>
-  <script src="locales/tr.js"></script>
-  <script src="locales/ru.js"></script>
-  <script src="locales/uk.js"></script>
-  <script src="locales/ja.js"></script>
-  <script src="locales/ko.js"></script>
-  <script src="locales/zh.js"></script>
-  <script src="locales/id.js"></script>
-  <script src="locales/vi.js"></script>
-  <script src="main.js"></script>
+<script src="i18n.js"></script>
+<script src="locales/en.js"></script>
+<script src="locales/es.js"></script>
+<script src="locales/pt.js"></script>
+<script src="locales/fr.js"></script>
+<script src="locales/de.js"></script>
+<script src="locales/it.js"></script>
+<script src="locales/nl.js"></script>
+<script src="locales/pl.js"></script>
+<script src="locales/tr.js"></script>
+<script src="locales/ru.js"></script>
+<script src="locales/uk.js"></script>
+<script src="locales/ja.js"></script>
+<script src="locales/ko.js"></script>
+<script src="locales/zh.js"></script>
+<script src="locales/id.js"></script>
+<script src="locales/vi.js"></script>
+<script src="main.js"></script>
 </body>
 </html>

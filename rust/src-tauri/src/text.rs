@@ -101,6 +101,32 @@ pub fn parse_dictionary(source: &str) -> Rules {
     rules
 }
 
+/// The "wrong -> right" pairs, for the editor in the window.
+pub fn read_dictionary(path: &Path) -> Vec<(String, String)> {
+    let Ok(source) = fs::read_to_string(path) else { return Vec::new() };
+    source
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| l.split_once("->"))
+        .map(|(w, r)| (w.trim().to_string(), r.trim().to_string()))
+        .filter(|(w, _)| !w.is_empty())
+        .collect()
+}
+
+/// Writes the pairs back, keeping the explanation at the top of the file.
+pub fn write_dictionary(path: &Path, entries: &[(String, String)]) -> std::io::Result<()> {
+    let mut out: String = DICTIONARY_TEMPLATE.lines().filter(|l| l.starts_with('#')).map(|l| format!("{l}\n")).collect();
+    for (wrong, right) in entries {
+        let (wrong, right) = (wrong.trim(), right.trim());
+        if !wrong.is_empty() && !wrong.contains("->") {
+            out.push_str(&format!("{wrong} -> {right}\n"));
+        }
+    }
+    fs::write(path, out)
+}
+
 /// The Whisper hint: the built-in terms plus the dictionary's right-hand words.
 pub fn build_prompt(dictionary: &Dictionary) -> String {
     let extra: Vec<String> =

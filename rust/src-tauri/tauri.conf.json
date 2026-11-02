@@ -12,10 +12,10 @@
       {
         "label": "main",
         "title": "PromptFlow",
-        "width": 480,
-        "height": 760,
-        "minWidth": 440,
-        "minHeight": 600,
+        "width": 780,
+        "height": 620,
+        "minWidth": 640,
+        "minHeight": 520,
         "visible": false
       }
     ],

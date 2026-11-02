@@ -202,10 +202,27 @@ fn set_setting(app: AppHandle, engine: State<'_, Arc<Engine>>, key: String, valu
 }
 
 #[tauri::command]
+fn get_dictionary(engine: State<'_, Arc<Engine>>) -> Vec<(String, String)> {
+    text::read_dictionary(&engine.data_dir.join("dictionary.txt"))
+}
+
+#[tauri::command]
+fn save_dictionary(engine: State<'_, Arc<Engine>>, entries: Vec<(String, String)>) -> Result<(), String> {
+    text::write_dictionary(&engine.data_dir.join("dictionary.txt"), &entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn finish_onboarding(engine: State<'_, Arc<Engine>>) {
+    engine.settings.lock().unwrap().onboarded = true;
+    engine.save_settings();
+}
+
+#[tauri::command]
 fn open_data_file(engine: State<'_, Arc<Engine>>, name: String) -> Result<(), String> {
     let path = match name.as_str() {
         "dictionary" => engine.data_dir.join("dictionary.txt"),
         "history" => engine.history_file(),
+        "folder" => return opener::open(&engine.data_dir).map_err(|e| e.to_string()),
         _ => return Err("unknown file".into()),
     };
     if !path.exists() {
@@ -410,7 +427,7 @@ fn open_permission_settings(name: String) -> Result<(), String> {
 /// Opens a link in the browser (only the few the window uses).
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
-    if !url.starts_with("https://ollama.com/") {
+    if !url.starts_with("https://ollama.com/") && !url.starts_with("https://github.com/tugberkup/promptflow") {
         return Err("not allowed".into());
     }
     opener::open_browser(&url).map_err(|e| e.to_string())
@@ -521,7 +538,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_state, ai_models, set_setting, open_data_file,
             get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level, missing_permissions, open_permission_settings,
-            set_speech_languages, set_tray_labels
+            set_speech_languages, set_tray_labels, get_dictionary, save_dictionary, finish_onboarding
         ])
         .manage(Downloads::default())
         .setup(|app| {

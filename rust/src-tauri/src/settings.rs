@@ -26,6 +26,8 @@ pub struct Settings {
     pub speech_languages: Option<Vec<String>>,
     /// Language of PromptFlow's own window; None = follow the OS
     pub ui_language: Option<String>,
+    /// The first-run setup guide has been completed
+    pub onboarded: bool,
     /// Shorter presses are ignored
     pub min_seconds: f32,
 }
@@ -43,6 +45,7 @@ impl Default for Settings {
             restore_clipboard: true,
             speech_languages: None,
             ui_language: None,
+            onboarded: false,
             min_seconds: 0.4,
         }
     }
