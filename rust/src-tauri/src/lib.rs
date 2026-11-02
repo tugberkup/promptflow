@@ -326,6 +326,28 @@ fn pull_ai_model(app: AppHandle, model: String) {
     });
 }
 
+/// Permissions PromptFlow still needs (macOS: Accessibility for the hotkey and for pasting).
+#[tauri::command]
+fn missing_permissions() -> Vec<&'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        if !handy_keys::check_accessibility() {
+            return vec!["Accessibility"];
+        }
+    }
+    Vec::new()
+}
+
+#[tauri::command]
+fn open_permission_settings(name: String) -> Result<(), String> {
+    let pane = match name.as_str() {
+        "Accessibility" => "Privacy_Accessibility",
+        "Microphone" => "Privacy_Microphone",
+        _ => return Err("unknown permission".into()),
+    };
+    opener::open(format!("x-apple.systempreferences:com.apple.preference.security?{pane}")).map_err(|e| e.to_string())
+}
+
 /// Opens a link in the browser (only the few the window uses).
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
@@ -436,11 +458,14 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .invoke_handler(tauri::generate_handler![
             get_state, ai_models, set_setting, open_data_file,
-            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level
+            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level, missing_permissions, open_permission_settings
         ])
         .manage(Downloads::default())
         .setup(|app| {
             thread::spawn(hardware); // detect the GPU early; the catalog needs it
+            // A menu bar app on macOS: no Dock icon
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let data_dir = app.path().app_data_dir()?;
             let imported = migrate::import_once(&data_dir);
             let engine = Engine::new(app.handle().clone(), data_dir);

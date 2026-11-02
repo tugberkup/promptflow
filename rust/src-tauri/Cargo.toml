@@ -34,7 +34,11 @@ tauri-plugin-single-instance = "2"
 
 [target."cfg(windows)".dependencies]
 whisper-rs = { version = "0.16.0", features = ["vulkan"] }
-windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Diagnostics_Debug"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+# Apple Silicon runs Whisper on the GPU with Metal; Intel Macs use the CPU (Metal hangs on some of their AMD GPUs)
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 whisper-rs = { version = "0.16.0", features = ["metal"] }
+
+[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
+whisper-rs = { version = "0.16.0" }

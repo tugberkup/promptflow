@@ -122,6 +122,22 @@ async function refresh() {
 
 const set = (key, value) => invoke("set_setting", { key, value }).catch((e) => console.error(e));
 
+// ---------------- permissions (macOS) ----------------
+let permissionTimer = null;
+
+async function checkPermissions() {
+  const missing = await invoke("missing_permissions");
+  $("permissions").hidden = !missing.length;
+  clearTimeout(permissionTimer);
+  if (!missing.length) return;
+  $("permissions-text").textContent =
+    `PromptFlow needs the ${missing.join(" and ")} permission to notice the hotkey and paste for you. ` +
+    "Turn PromptFlow on in the list.";
+  $("permissions-open").textContent = `Open ${missing[0]} settings`;
+  $("permissions-open").onclick = () => invoke("open_permission_settings", { name: missing[0] });
+  permissionTimer = setTimeout(checkPermissions, 2000);
+}
+
 // ---------------- model catalog ----------------
 let catalog = null;
 const cards = {}; // model id -> { bar, text }
@@ -312,6 +328,14 @@ function wire() {
         $("hint").textContent = "Pick a speech model to get started.";
         openCatalog();
         break;
+      case "permissions":
+        setStatus("model", "Permission");
+        checkPermissions();
+        break;
+      case "permissions_ok":
+        checkPermissions();
+        backToReady();
+        break;
       case "recording":
         setStatus("recording");
         break;
@@ -341,6 +365,7 @@ function wire() {
 
 wire();
 wireCatalog();
+checkPermissions();
 refresh().then(async () => {
   catalog = await invoke("get_catalog");
   $("speech-model").textContent = modelName(catalog.current);

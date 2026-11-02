@@ -113,9 +113,15 @@ impl Engine {
     /// Starts everything; call once on a background thread (loading the model takes a few seconds).
     pub fn start(self: &Arc<Self>) {
         let me = self.clone();
-        if let Err(e) = hotkey::listen(self.hotkey.clone(), move |event| me.on_hotkey(event)) {
-            self.log(format!("[hotkey error] {e}"));
-            self.emit("error", format!("Can't watch the hotkey: {e}"));
+        thread::spawn(move || me.listen_for_hotkey());
+
+        #[cfg(target_os = "macos")]
+        {
+            // Opening the microphone once makes macOS ask for access now, not on the first dictation
+            if self.recorder.start(self.settings().mic).is_ok() {
+                thread::sleep(Duration::from_millis(200));
+                self.recorder.stop();
+            }
         }
 
         let (tx, rx) = channel::<Vec<f32>>();
@@ -131,6 +137,31 @@ impl Engine {
         thread::spawn(move || me.keep_ai_warm());
 
         self.load_model();
+    }
+
+    /// On macOS the keyboard can only be watched once Accessibility is allowed: keep trying until it is.
+    fn listen_for_hotkey(self: Arc<Self>) {
+        let mut told = false;
+        loop {
+            let me = self.clone();
+            match hotkey::listen(self.hotkey.clone(), move |event| me.on_hotkey(event)) {
+                Ok(()) => {
+                    if told {
+                        self.log("Hotkey permission granted.");
+                        self.emit("permissions_ok", "");
+                    }
+                    return;
+                }
+                Err(e) => {
+                    if !told {
+                        told = true;
+                        self.log(format!("[hotkey] {e}"));
+                        self.emit("permissions", format!("Can't watch the hotkey yet: {e}"));
+                    }
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+        }
     }
 
     /// Loads the selected speech model if it's on disk (again, if another one was picked).
@@ -183,6 +214,9 @@ impl Engine {
                 match self.recorder.start(self.settings().mic) {
                     Ok(_) => {
                         *hold = Hold { held: true, cancelled: false, started: Some(Instant::now()) };
+                        if self.settings().sounds {
+                            paste::beep(true);
+                        }
                         self.emit("recording", "");
                     }
                     Err(e) => {
@@ -211,6 +245,9 @@ impl Engine {
                     self.emit("idle", "");
                     return;
                 }
+                if self.settings().sounds {
+                    paste::beep(false);
+                }
                 self.emit("processing", "");
                 if let Some(jobs) = self.jobs.lock().unwrap().as_ref() {
                     let _ = jobs.send(audio);
@@ -219,11 +256,28 @@ impl Engine {
         }
     }
 
+    /// macOS only allows simulated key presses from the main thread.
+    fn press_paste_keys(&self) -> anyhow::Result<()> {
+        if cfg!(target_os = "macos") {
+            let (tx, rx) = channel();
+            self.app.run_on_main_thread(move || {
+                let _ = tx.send(paste::press_paste_keys());
+            })?;
+            rx.recv()?
+        } else {
+            paste::press_paste_keys()
+        }
+    }
+
     fn process(&self, audio: Vec<f32>) {
         let Some(stt) = self.stt.lock().unwrap().clone() else { return };
         if audio.iter().all(|s| *s == 0.0) {
             // Exact zeros: the OS is blocking the microphone (on macOS, a missing permission)
-            let hint = "The microphone only sent silence. Check the microphone and its permission.";
+            let hint = if cfg!(target_os = "macos") {
+                "The microphone only sent silence. Allow PromptFlow in System Settings → Privacy & Security → Microphone."
+            } else {
+                "The microphone only sent silence. Check the microphone picked in PromptFlow."
+            };
             self.log(format!("[microphone] {hint}"));
             self.emit("error", hint);
             return;
@@ -256,7 +310,7 @@ impl Engine {
         if final_text != raw {
             self.log(format!("      raw: {raw}"));
         }
-        if let Err(e) = paste::paste(&final_text, s.restore_clipboard) {
+        if let Err(e) = paste::paste(&final_text, s.restore_clipboard, &|| self.press_paste_keys()) {
             self.log(format!("[paste error] {e}"));
             self.emit("error", format!("Couldn't paste: {e}"));
         }
