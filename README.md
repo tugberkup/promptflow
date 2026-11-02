@@ -9,6 +9,13 @@ No audio ever leaves your computer, there's no subscription, and once it's set u
 
 <p align="center"><img src="docs/screenshot.png" width="420" alt="PromptFlow window"></p>
 
+> **New: PromptFlow 2.0 beta, rewritten in Rust.** No Python needed: download the installer
+> (Windows `.exe`, macOS `.dmg`, under 10 MB) from [Releases](https://github.com/tugberkup/promptflow/releases),
+> open it, and pick a speech model in the built-in catalog; it recommends one for your computer.
+> It's faster too (about 0.4 s from releasing the key to the text on an RTX 4060 Ti) and brings over your
+> 1.x history, dictionary and settings. Source and build notes are in [`rust/`](rust/).
+> The instructions below are for 1.x, the Python version.
+
 > **macOS support is in beta.** It's built and tested automatically on Apple Silicon and Intel Macs, but it has had
 > less real-world use than the Windows version. Tried it on your Mac? Please fill in the short
 > [macOS test report](https://github.com/tugberkup/promptflow/issues/new?template=macos-test-report.md),

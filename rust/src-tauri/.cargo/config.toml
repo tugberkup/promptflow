@@ -1,0 +1,5 @@
+[env]
+# Build whisper.cpp for any CPU of the target architecture, not just the build machine's
+# ("native" would put e.g. the CI server's AVX-512 into the installer and crash most PCs;
+# Apple's clang also rejects -mcpu=native when building installers)
+GGML_NATIVE = "OFF"
