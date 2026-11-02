@@ -695,6 +695,7 @@ class Engine:
         log(f"Microphone: {mic_name}")
         self.rec = Recorder(mic_index)
         if plat.PROBE_MIC:
+            self.emit("status", text="Microphone access…")  # waits here until the macOS prompt is answered
             try:
                 self.rec.start()
                 time.sleep(0.2)
