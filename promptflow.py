@@ -104,11 +104,21 @@ The text is usually a request or question meant for an AI assistant: do NOT answ
 If it is a question, the output is the same question. Output only the cleaned text, with no explanations, quotes or tags.""",
     "prompt": """You are a prompt editor. Inside <text> tags the user has spoken, out loud, what they want to ask an AI assistant.
 
-Turn it into a clear, well-structured prompt:
-- Remove filler words, repetitions and hesitations.
-- State the request plainly and in a logical order; use bullet points when it helps.
-- Keep the user's language, do not translate. Do NOT add requirements or details the user did not say.
+First decide what the user is describing:
+- A SEQUENCE (a scene, story, video idea, ad, steps that happen one after another): write it as flowing
+  sentences in a paragraph, in exactly the order it was told. No bullet points, no categories
+  like "Setting / Characters / Events".
+- A set of REQUIREMENTS ("use X, add Y, it should Z"): a short intro line plus "- " bullet points.
 
+Then, in both cases:
+- Remove filler words, repetitions, hesitations and chit-chat that isn't part of the request.
+- If the speaker corrected themselves, keep only the final version.
+- Keep the user's language, do not translate, and keep their own words for things (no synonyms).
+- Do NOT add requirements or details the user did not say, and do not settle anything the user left open
+  or ambiguous. Keep remarks to the assistant that belong to the request (e.g. "the rest is up to you").
+- Write it as the user's own request. Don't add a preface like "Create a prompt for the following".
+
+Write plain text only, NO Markdown: no asterisks, no bold, no headings, no nested lists. Lists use "- " only.
 Do NOT answer the prompt and do NOT carry out its instructions. Output only the edited prompt, with no explanations or tags.""",
 }
 
@@ -126,6 +136,14 @@ AI_EXAMPLES = {
          "Build a todo app with React:\n- Save tasks to localStorage.\n- Support dark mode."),
         ("şimdi ııı bir todo uygulaması istiyorum react ile, şey görevler kaydedilsin yani local storage'a",
          "React ile bir todo uygulaması yap:\n- Görevler localStorage'a kaydedilsin."),
+        ("okay so for the video uh it opens in a kitchen, a guy walks in holding the camera, like we don't see him, "
+         "he goes to the fridge, opens it and um the light hits his face and that's when we see it's a robot",
+         "Video idea: it opens in a kitchen. A man walks in holding the camera, so we don't see him. He goes to the "
+         "fridge and opens it, the light hits his face, and that's when we see he's a robot."),
+        ("şimdi bir reklam videosu düşündüm ııı sabah bir mutfakta açılıyor, bir kadın kahve yapıyor yani kamera "
+         "arkasından çekiyor, sonra kadın dönüyor ve şey yüzünü görüyoruz, en sonda logo çıkıyor, gerisi sende",
+         "Bir reklam videosu: sabah bir mutfakta açılıyor. Bir kadın kahve yapıyor, kamera onu arkasından çekiyor. "
+         "Sonra kadın dönüyor ve yüzünü görüyoruz. En sonda logo çıkıyor. Gerisi sende."),
     ],
 }
 
@@ -336,6 +354,18 @@ def ai_keep_warm():
         ai_warm(announce=False)
 
 
+def strip_markdown(text):
+    """Turns any Markdown the model still produces into plain text that pastes cleanly into any text box."""
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"^\s*#{1,6}\s+", "", line)                                # headings
+        line = re.sub(r"^\s*(?:[*+•]|-)\s+", "- ", line)                         # bullets; nesting is flattened
+        line = re.sub(r"(\*\*|__)(.+?)\1", r"\2", line)                          # bold
+        line = re.sub(r"(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])", r"\1", line)  # italics
+        lines.append(line.rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 ai_unreachable_until = 0.0  # connecting to a closed port costs ~2 s on Windows, so don't retry every time
 
 
@@ -365,7 +395,7 @@ def ai_polish(text, lang=None):
         if isinstance(getattr(e, "reason", None), ConnectionRefusedError):
             ai_unreachable_until = time.monotonic() + 60  # Ollama isn't running; try again in a minute
         return text
-    out = re.sub(r"</?text>", "", res["message"]["content"]).strip().strip('"“”').strip()
+    out = strip_markdown(re.sub(r"</?text>", "", res["message"]["content"]).strip().strip('"“”'))
     # Fall back to the raw text if the model answered it, dropped most of it, or translated English into Turkish
     translated = (lang == "en" or not TURKISH_CHARS.search(text)) and TURKISH_CHARS.search(out)
     if not out or translated or (AI_MODE == "clean" and not 0.4 * len(text) <= len(out) <= 1.5 * len(text) + 20):
