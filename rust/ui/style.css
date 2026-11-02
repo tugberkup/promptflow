@@ -1,0 +1,129 @@
+:root {
+  --bg: #1d1e22;
+  --card: #2b2c31;
+  --item: #2f3036;
+  --text: #ecedf0;
+  --muted: #9a9ba3;
+  --accent: #2f7fd1;
+  --accent-hover: #2a6fb6;
+  --ready: #1f8f4e;
+  --recording: #d93f45;
+  --processing: #c77418;
+  --idle: #4b5563;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+button, select { font: inherit; color: inherit; }
+
+header { display: flex; align-items: center; gap: 12px; }
+.logo { width: 40px; height: 40px; }
+.titles { flex: 1; min-width: 0; }
+h1 { margin: 0; font-size: 20px; }
+#hint { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+.status {
+  padding: 4px 14px;
+  border-radius: 13px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--idle);
+}
+.status.ready { background: var(--ready); }
+.status.recording { background: var(--recording); }
+.status.processing, .status.permission { background: var(--processing); }
+.status.error { background: var(--recording); }
+
+.banner {
+  padding: 10px 14px;
+  border: 1px solid var(--processing);
+  border-radius: 12px;
+  background: #3a2a12;
+}
+.banner p { margin: 0 0 8px; }
+.banner button {
+  border: 0; border-radius: 6px; padding: 5px 12px;
+  background: var(--processing); cursor: pointer;
+}
+
+.card { background: var(--card); border-radius: 12px; padding: 14px 16px; }
+
+.settings {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+.settings > label { color: var(--text); }
+.sub { margin: -4px 0 2px; color: var(--muted); font-size: 12.5px; }
+
+select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  cursor: pointer;
+}
+select:hover { background: var(--accent-hover); }
+
+.segmented { display: flex; background: #4a4b52; border-radius: 6px; padding: 2px; }
+.segmented button {
+  flex: 1; border: 0; padding: 5px 0; border-radius: 5px;
+  background: transparent; cursor: pointer;
+}
+.segmented button.active { background: var(--accent); }
+
+.switches { grid-column: 1 / -1; display: flex; gap: 24px; margin-top: 6px; }
+.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.switch input { display: none; }
+.switch span {
+  width: 34px; height: 18px; border-radius: 9px; background: #4a4b52; position: relative; transition: .15s;
+}
+.switch span::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: #d6d7dc; transition: .15s;
+}
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { left: 18px; background: white; }
+.switch em { font-style: normal; }
+
+.history { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.history-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+h2 { margin: 0; font-size: 14px; }
+#history-list { flex: 1; overflow-y: auto; padding-right: 4px; }
+.item {
+  display: flex; gap: 10px; align-items: center;
+  background: var(--item); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px;
+}
+.item .text { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; user-select: text; }
+.item time { display: block; color: var(--muted); font-size: 11px; }
+.empty { color: var(--muted); text-align: center; margin-top: 40px; }
+
+button.ghost, button.copy {
+  border: 1px solid #55565e; background: transparent; border-radius: 6px; padding: 3px 12px; cursor: pointer;
+}
+button.copy { background: #45464d; border: 0; min-width: 72px; padding: 5px 10px; }
+
+footer { display: flex; justify-content: space-between; }
+footer button { border: 0; border-radius: 6px; padding: 7px 0; width: 140px; cursor: pointer; }
+.primary { background: var(--accent); }
+.primary:hover { background: var(--accent-hover); }
+.secondary { background: #3f4046; }

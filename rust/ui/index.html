@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PromptFlow</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <img class="logo" src="icon.png" alt="">
+    <div class="titles">
+      <h1>PromptFlow</h1>
+      <p id="hint">Loading the speech model, takes a few seconds.</p>
+    </div>
+    <span id="status" class="status loading">Loading…</span>
+  </header>
+
+  <section id="permissions" class="banner" hidden>
+    <p id="permissions-text"></p>
+    <button id="permissions-open">Open Settings</button>
+  </section>
+
+  <section class="card settings">
+    <label>Mode</label>
+    <div class="segmented" id="mode">
+      <button data-value="clean">Clean</button>
+      <button data-value="prompt">Prompt</button>
+      <button data-value="raw">Raw</button>
+    </div>
+    <span></span><p class="sub" id="mode-hint"></p>
+
+    <label for="ai-model">AI model</label>
+    <select id="ai-model"></select>
+
+    <label for="speech-model">Speech model</label>
+    <select id="speech-model"></select>
+
+    <label for="hotkey">Hotkey</label>
+    <select id="hotkey"></select>
+
+    <label for="mic">Microphone</label>
+    <select id="mic"></select>
+
+    <label for="language">Language</label>
+    <select id="language"></select>
+
+    <div class="switches">
+      <label class="switch"><input type="checkbox" id="autostart"><span></span><em id="autostart-label">Start at login</em></label>
+      <label class="switch"><input type="checkbox" id="sounds"><span></span><em>Beeps</em></label>
+    </div>
+  </section>
+
+  <section class="card history">
+    <div class="history-top">
+      <h2>Recent dictations</h2>
+      <button class="ghost" id="open-history">Full history</button>
+    </div>
+    <div id="history-list"></div>
+  </section>
+
+  <footer>
+    <button class="secondary" id="edit-dictionary">Edit dictionary</button>
+    <button class="primary" id="hide">Hide to tray</button>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
