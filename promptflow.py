@@ -1,13 +1,14 @@
 """
-PromptFlow engine: a fully local push-to-talk dictation tool.
+PromptFlow engine: a fully local push-to-talk dictation tool for Windows and macOS.
 
-- Hold Right Ctrl -> speak -> release, or
+- Hold the hotkey (Right Ctrl on Windows, Right Command on macOS) -> speak -> release, or
 - say "Promptflow" -> speak -> pause (experimental, see WAKE_ENABLED).
 
 The text is pasted into the active window. Audio never leaves the machine: transcription runs
-on the GPU with faster-whisper, and the optional cleanup runs locally through Ollama.
+on the GPU with faster-whisper (NVIDIA) or MLX (Apple Silicon), and the optional cleanup runs locally through Ollama.
 
 The desktop app is app.pyw; this file also runs on its own in a console: python promptflow.py
+Everything specific to one OS lives in platform_win.py / platform_mac.py.
 """
 import collections
 import difflib
@@ -15,24 +16,31 @@ import json
 import os
 import queue
 import re
-import site
 import sys
 import threading
 import time
 import urllib.request
-import winsound
+from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
+if sys.platform == "darwin":
+    import platform_mac as plat
+else:
+    import platform_win as plat
+
+VERSION = "1.1.0"
+
 # ---------------- SETTINGS ----------------
 # These are defaults; anything changed in the app is saved to settings.json and overrides them.
-HOTKEY = "ctrl_r"            # key to hold: ctrl_r (Right Ctrl), shift_r, f8, f9, scroll_lock ...
+HOTKEY = plat.DEFAULT_HOTKEY # key to hold: ctrl_r (Right Ctrl), cmd_r (Right Command), shift_r, f8 ...
 MODEL = "large-v3-turbo"     # Whisper model: tiny / base / small / medium / large-v3 / large-v3-turbo
 LANGUAGE = None              # None = auto-detect, or a language code such as "en", "tr", "de"
 # Words you use often, given to Whisper as a hint so it spells them right (dictionary.txt targets are added too)
 INITIAL_PROMPT = "Claude, prompt, React, Next.js, TypeScript, Python, API, commit, deploy, frontend, backend."
-DEVICE = "auto"              # "auto" (tries the GPU first), "cuda" or "cpu"
-MIC = None                   # part of a microphone name (e.g. "QuadCast"); None = Windows default
+DEVICE = "auto"              # "auto" (fastest available), "cuda" (NVIDIA), "mlx" (Apple Silicon) or "cpu"
+MIC = None                   # part of a microphone name (e.g. "QuadCast"); None = system default
 SOUNDS = False               # start/stop beeps
 MIN_SECONDS = 0.4            # shorter presses are ignored
 RESTORE_CLIPBOARD = True     # put the previous clipboard back after pasting
@@ -155,24 +163,12 @@ next js -> Next.js
 """
 
 
-def add_cuda_dlls():
-    """Make the DLLs from the pip packages nvidia-cublas / nvidia-cudnn visible."""
-    for sp in site.getsitepackages():
-        for sub in ("cublas", "cudnn", "cuda_nvrtc"):
-            d = Path(sp) / "nvidia" / sub / "bin"
-            if d.is_dir():
-                os.add_dll_directory(str(d))
-                os.environ["PATH"] = str(d) + os.pathsep + os.environ["PATH"]
-
-
-add_cuda_dlls()
+plat.setup()
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 import numpy as np  # noqa: E402
 import pyperclip  # noqa: E402
 import sounddevice as sd  # noqa: E402
-from faster_whisper import WhisperModel  # noqa: E402
-from pynput import keyboard  # noqa: E402
 
 # The model is shared by dictation and the wake word listener
 model_lock = threading.Lock()
@@ -180,13 +176,7 @@ model_lock = threading.Lock()
 
 def beep(freq, ms):
     if SOUNDS:
-        threading.Thread(target=winsound.Beep, args=(freq, ms), daemon=True).start()
-
-
-def parse_hotkey(name):
-    if len(name) == 1:
-        return keyboard.KeyCode.from_char(name)
-    return getattr(keyboard.Key, name)
+        plat.beep(freq, ms)
 
 
 def list_mics():
@@ -205,21 +195,116 @@ def find_mic():
             if d["max_input_channels"] > 0 and MIC.lower() in d["name"].lower():
                 return i, d["name"]
         log(f"No microphone named '{MIC}', using the default one.")
-    return None, sd.query_devices(kind="input")["name"]
+    try:
+        return None, sd.query_devices(kind="input")["name"]
+    except Exception:
+        return None, "none found"
+
+
+# ---------------- speech to text ----------------
+Segment = namedtuple("Segment", "text no_speech_prob avg_logprob")
+
+
+class FasterWhisper:
+    """faster-whisper on an NVIDIA GPU ("cuda") or on the CPU."""
+
+    def __init__(self, name, device):
+        from faster_whisper import WhisperModel
+        if device == "cuda":
+            self.model = WhisperModel(name, device="cuda", compute_type="float16")
+            # Warm-up: load CUDA/cuDNN now so the first dictation isn't slow
+            list(self.model.transcribe(np.zeros(SAMPLE_RATE, np.float32), language="en")[0])
+        else:
+            self.model = WhisperModel(name, device="cpu", compute_type="int8")
+
+    def transcribe(self, audio, language, prompt, quick=False):
+        """Returns ([Segment, ...], detected language). quick: a fast, rough pass for the wake word."""
+        if quick:
+            segments, info = self.model.transcribe(
+                audio, language=language, beam_size=1,
+                without_timestamps=True, condition_on_previous_text=False,
+            )
+        else:
+            segments, info = self.model.transcribe(
+                audio, language=language, initial_prompt=prompt,
+                vad_filter=True, beam_size=5, condition_on_previous_text=False,
+            )
+        return [Segment(s.text, s.no_speech_prob, s.avg_logprob) for s in segments], info.language
+
+
+class MlxWhisper:
+    """Whisper on the GPU of Apple Silicon Macs (mlx-whisper)."""
+
+    REPOS = {
+        "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+        "large-v3": "mlx-community/whisper-large-v3-mlx",
+        "medium": "mlx-community/whisper-medium-mlx",
+        "small": "mlx-community/whisper-small-mlx",
+        "base": "mlx-community/whisper-base-mlx",
+        "tiny": "mlx-community/whisper-tiny-mlx",
+    }
+
+    def __init__(self, name):
+        import mlx_whisper  # noqa: F401  (fails here, not on the first dictation, if MLX can't run)
+        self.repo = self.REPOS.get(name, name)
+        # MLX keeps its GPU streams per thread, so the model is loaded and always used on this one thread
+        self.pool = ThreadPoolExecutor(max_workers=1)
+        self.transcribe(np.zeros(SAMPLE_RATE, np.float32), "en", None, quick=True)  # load + warm-up
+
+    def _run(self, audio, language, prompt, quick):
+        import mlx_whisper
+        if not quick:
+            audio = speech_only(audio)  # faster-whisper's vad_filter, done by hand
+            if audio.size < SAMPLE_RATE // 10:
+                return [], language
+        result = mlx_whisper.transcribe(
+            audio, path_or_hf_repo=self.repo, language=language, initial_prompt=prompt,
+            condition_on_previous_text=False, **({"temperature": 0.0} if quick else {}),
+        )
+        segments = [Segment(s["text"], s.get("no_speech_prob", 0.0), s.get("avg_logprob", 0.0))
+                    for s in result.get("segments", [])]
+        return segments, result.get("language", language)
+
+    def transcribe(self, audio, language, prompt, quick=False):
+        return self.pool.submit(self._run, audio, language, prompt, quick).result()
+
+
+def speech_only(audio):
+    """Keeps only the parts with speech in them (Silero VAD, which ships with faster-whisper)."""
+    from faster_whisper.vad import get_speech_timestamps
+    chunks = get_speech_timestamps(audio, sampling_rate=SAMPLE_RATE)
+    if not chunks:
+        return audio[:0]
+    return np.concatenate([audio[c["start"]:c["end"]] for c in chunks])
+
+
+BACKENDS = {
+    "cuda": lambda name: FasterWhisper(name, "cuda"),
+    "cpu": lambda name: FasterWhisper(name, "cpu"),
+    "mlx": MlxWhisper,
+}
 
 
 def load_model():
-    if DEVICE in ("auto", "cuda"):
+    """Returns (model, backend name), trying the fastest backend this machine has first."""
+    backends = plat.speech_backends() if DEVICE == "auto" else [DEVICE]
+    for i, backend in enumerate(backends):
         try:
-            model = WhisperModel(MODEL, device="cuda", compute_type="float16")
-            # Warm-up: load CUDA/cuDNN now so the first dictation isn't slow
-            list(model.transcribe(np.zeros(SAMPLE_RATE, np.float32), language="en")[0])
-            return model, "cuda"
+            return BACKENDS[backend](MODEL), backend
         except Exception as e:
-            if DEVICE == "cuda":
+            if i == len(backends) - 1:
                 raise
-            log(f"GPU not available, falling back to CPU: {e}")
-    return WhisperModel(MODEL, device="cpu", compute_type="int8"), "cpu"
+            log(f"{backend} not available, falling back to {backends[i + 1]}: {e}")
+
+
+def download_speech_model():
+    """Used by the installers so the first start doesn't wait for the download."""
+    if plat.speech_backends()[0] == "mlx":
+        from huggingface_hub import snapshot_download
+        snapshot_download(MlxWhisper.REPOS.get(MODEL, MODEL))
+    else:
+        from faster_whisper import download_model
+        download_model(MODEL)
 
 
 class Dictionary:
@@ -270,18 +355,11 @@ def build_prompt(dictionary):
 def transcribe(model, audio, prompt):
     """Returns (text, detected language)."""
     with model_lock:
-        segments, info = model.transcribe(
-            audio,
-            language=LANGUAGE,
-            initial_prompt=prompt,
-            vad_filter=True,
-            beam_size=5,
-            condition_on_previous_text=False,
-        )
-        text = " ".join(s.text.strip() for s in segments).strip()
+        segments, lang = model.transcribe(audio, LANGUAGE, prompt)
+    text = " ".join(s.text.strip() for s in segments).strip()
     if text.lower() in HALLUCINATIONS:
-        return "", info.language
-    return text, info.language
+        return "", lang
+    return text, lang
 
 
 WAKE_PREFIXES = {"hey", "hi", "ok", "okay", "okey", "ey", "hadi"}
@@ -436,10 +514,7 @@ def paste(text):
         except Exception:
             pass
     pyperclip.copy(text)
-    kb = keyboard.Controller()
-    with kb.pressed(keyboard.Key.ctrl):
-        kb.press("v")
-        kb.release("v")
+    plat.paste_keys()  # Ctrl+V / Cmd+V
     if old is not None:
         time.sleep(0.3)  # wait until the target app has read the clipboard
         pyperclip.copy(old)
@@ -504,14 +579,11 @@ class WakeListener:
     def _heard_wake(self, audio):
         """Quickly transcribes a short chunk and looks for the wake word. Returns (heard text, rest or None)."""
         with model_lock:
-            segments, _ = self.model.transcribe(
-                audio, language=LANGUAGE, beam_size=1,
-                without_timestamps=True, condition_on_previous_text=False,
-            )
-            # Segments Whisper is unsure about or thinks are silence don't count
-            text = " ".join(
-                s.text.strip() for s in segments if s.no_speech_prob < 0.5 and s.avg_logprob > -1.0
-            )
+            segments, _ = self.model.transcribe(audio, LANGUAGE, None, quick=True)
+        # Segments Whisper is unsure about or thinks are silence don't count
+        text = " ".join(
+            s.text.strip() for s in segments if s.no_speech_prob < 0.5 and s.avg_logprob > -1.0
+        )
         return text, strip_wake(text)
 
     def _run(self):
@@ -588,7 +660,7 @@ class WakeListener:
 
 class Engine:
     """The dictation engine. The app follows its state through on_event(kind, data):
-    status, ready, recording, processing, done, idle, error."""
+    status, permissions, ready, recording, processing, done, idle, error."""
 
     def __init__(self, on_event=None):
         self.on_event = on_event or (lambda kind, data: None)
@@ -605,7 +677,11 @@ class Engine:
 
     def start(self):
         """Loads the model and starts listening for the hotkey (takes a few seconds; call it on a thread)."""
-        self.hotkey = parse_hotkey(HOTKEY)
+        global HOTKEY
+        if not plat.valid_hotkey(HOTKEY):  # e.g. settings.json brought over from the other OS
+            log(f"The hotkey '{HOTKEY}' doesn't exist on {plat.NAME}, using '{plat.DEFAULT_HOTKEY}'.")
+            HOTKEY = plat.DEFAULT_HOTKEY
+        plat.request_permissions()  # macOS: the prompts show up while the model loads
         if not DICTIONARY_FILE.exists():
             DICTIONARY_FILE.write_text(DICTIONARY_TEMPLATE, encoding="utf-8")
         self.dictionary = Dictionary(DICTIONARY_FILE)
@@ -618,23 +694,45 @@ class Engine:
         mic_index, mic_name = find_mic()
         log(f"Microphone: {mic_name}")
         self.rec = Recorder(mic_index)
+        if plat.PROBE_MIC:
+            try:
+                self.rec.start()
+                time.sleep(0.2)
+            except Exception as e:
+                log(f"[microphone error] {e}")
+            self.rec.stop()
         self.jobs = queue.Queue()
         threading.Thread(target=self._worker, daemon=True).start()
 
         if WAKE_ENABLED:
             WakeListener(self.model, mic_index, self.jobs, paused=lambda: self.state["held"]).start()
 
-        self.listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
-        self.listener.start()
+        self.listener = plat.HotkeyListener(HOTKEY, self._on_down, self._on_up, self._on_other)
+        self._start_listener()
         log(f"Ready ({self.device}). Hold '{HOTKEY}', speak, release.")
         if WAKE_ENABLED:
             log(f"Or say \"{WAKE_WORD.capitalize()}\", speak, pause.")
         self.emit("ready", device=self.device)
 
+    def _start_listener(self):
+        """On macOS the hotkey can only be seen once Input Monitoring is allowed: wait for it."""
+        waiting = False
+        while True:
+            try:
+                self.listener.start()
+                return
+            except PermissionError as e:
+                if not waiting:
+                    waiting = True
+                    log(f"[permission needed] {e}")
+                    self.emit("permissions", text=str(e))
+                time.sleep(2)
+
     def set_hotkey(self, name):
         global HOTKEY
         HOTKEY = name
-        self.hotkey = parse_hotkey(name)
+        if self.listener is not None:
+            self.listener.set_hotkey(name)
 
     def set_mic(self, name):
         global MIC
@@ -642,28 +740,29 @@ class Engine:
         if self.rec is not None:
             self.rec.device = find_mic()[0]
 
-    def _on_press(self, key):
+    def _on_down(self):
         state = self.state
-        if key == self.hotkey:
-            if state["held"] or self.paused:
-                return  # key repeat, or paused
-            state.update(held=True, cancelled=False, t0=time.perf_counter())
-            try:
-                self.rec.start()
-            except Exception as e:
-                log(f"[microphone error] {e}")
-                state["held"] = False
-                self.emit("error", text=f"Couldn't open the microphone: {e}")
-                return
-            beep(880, 60)
-            self.emit("recording")
-        elif state["held"]:
-            # The hotkey is part of a regular shortcut (e.g. Ctrl+C) -> cancel the dictation
-            state["cancelled"] = True
+        if state["held"] or self.paused:
+            return  # key repeat, or paused
+        state.update(held=True, cancelled=False, t0=time.perf_counter())
+        try:
+            self.rec.start()
+        except Exception as e:
+            log(f"[microphone error] {e}")
+            state["held"] = False
+            self.emit("error", text=f"Couldn't open the microphone: {e}")
+            return
+        beep(880, 60)
+        self.emit("recording")
 
-    def _on_release(self, key):
+    def _on_other(self):
+        if self.state["held"]:
+            # The hotkey is part of a regular shortcut (e.g. Ctrl+C) -> cancel the dictation
+            self.state["cancelled"] = True
+
+    def _on_up(self):
         state = self.state
-        if key != self.hotkey or not state["held"]:
+        if not state["held"]:
             return
         state["held"] = False
         audio = self.rec.stop()
@@ -679,6 +778,11 @@ class Engine:
         while True:
             audio, from_wake = self.jobs.get()
             t0 = time.perf_counter()
+            if not np.any(audio):
+                # Exact zeros: the OS is blocking the microphone (on macOS, a missing permission)
+                log(f"[microphone] {plat.MIC_SILENT_HINT}")
+                self.emit("error", text=plat.MIC_SILENT_HINT)
+                continue
             try:
                 raw, lang = transcribe(self.model, audio, build_prompt(self.dictionary))
                 if from_wake:

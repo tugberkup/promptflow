@@ -1,18 +1,14 @@
 """
-PromptFlow desktop app: tray icon, settings window and the recording pill at the bottom of the screen.
+PromptFlow desktop app: tray / menu bar icon, settings window and the recording pill at the bottom of the screen.
 
-The engine lives in promptflow.py; this file runs under pythonw, without a console window.
-Started with "--hidden" (as at Windows startup) it skips the window and sits in the tray.
+The engine lives in promptflow.py; on Windows this file runs under pythonw, without a console window.
+Started with "--hidden" (as at login) it skips the window and sits in the tray / menu bar.
 """
-import ctypes
-import hashlib
 import math
 import os
 import queue
-import subprocess
 import sys
 import threading
-import winreg
 from datetime import datetime
 from pathlib import Path
 
@@ -22,23 +18,22 @@ HERE = Path(__file__).resolve().parent
 if sys.stdout is None or sys.stderr is None:
     sys.stdout = sys.stderr = open(HERE / "promptflow.log", "w", encoding="utf-8", buffering=1)
 
+if sys.platform == "darwin":
+    import platform_mac as plat
+else:
+    import platform_win as plat
+
 # Single instance: with two PromptFlows running, every dictation would be pasted twice
-_mutex = ctypes.windll.kernel32.CreateMutexW(
-    None, False, "PromptFlow-" + hashlib.md5(str(HERE).lower().encode()).hexdigest()[:8])
-if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-    ctypes.windll.user32.MessageBoxW(
-        None, "PromptFlow is already running. Click the icon next to the clock.", "PromptFlow", 0x40
-    )
+if not plat.single_instance():
+    plat.message("PromptFlow", f"PromptFlow is already running. Click {plat.TRAY_WHERE}.")
     sys.exit(0)
 
-# Show our own icon in the taskbar instead of Python's
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PromptFlow")
+plat.app_init()
 
 import tkinter as tk  # noqa: E402
 
 import customtkinter as ctk  # noqa: E402
 import pyperclip  # noqa: E402
-import pystray  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
 import promptflow as pf  # noqa: E402
@@ -49,10 +44,7 @@ MODE_HINTS = {
     "Prompt": "Rewrites what you said as a clear, structured prompt.",
     "Raw": "Exactly what Whisper heard. No AI, fastest.",
 }
-HOTKEYS = {
-    "Right Ctrl": "ctrl_r", "Right Shift": "shift_r", "F8": "f8", "F9": "f9",
-    "F10": "f10", "Scroll Lock": "scroll_lock", "Pause": "pause",
-}
+HOTKEYS = plat.HOTKEYS
 LANGS = {"Auto-detect": None, **{name: code for code, name in pf.LANGUAGE_NAMES.items()}}
 
 STATUS_STYLE = {
@@ -65,80 +57,38 @@ STATUS_STYLE = {
 }
 ICON_COLORS = {"idle": "#5B5BD6", "recording": "#E5484D", "processing": "#E08A1E", "paused": "#6B7280"}
 
-RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-
 
 def label_for(mapping, value):
     return next((label for label, v in mapping.items() if v == value), value or next(iter(mapping)))
 
 
-def make_icon(color, size=256):
-    """A white microphone on a colored circle."""
+def make_icon(color, size=256, badge=True):
+    """A white microphone on a colored circle; with badge=False just the microphone, in that color."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     s = size / 64
     w = max(1, round(3.5 * s))
-    d.ellipse((0, 0, size - 1, size - 1), fill=color)
-    d.rounded_rectangle((24 * s, 11 * s, 40 * s, 37 * s), radius=8 * s, fill="white")
-    d.arc((17 * s, 20 * s, 47 * s, 45 * s), start=0, end=180, fill="white", width=w)
-    d.line((32 * s, 45 * s, 32 * s, 52 * s), fill="white", width=w)
-    d.line((25 * s, 52 * s, 39 * s, 52 * s), fill="white", width=w)
+    ink = "white" if badge else color
+    if badge:
+        d.ellipse((0, 0, size - 1, size - 1), fill=color)
+    else:
+        s, w = size / 44, max(1, round(4 * size / 44))  # the microphone alone fills the image
+        d.rounded_rectangle((15 * s, 2 * s, 29 * s, 25 * s), radius=7 * s, fill=ink)
+        d.arc((8 * s, 10 * s, 36 * s, 34 * s), start=0, end=180, fill=ink, width=w)
+        d.line((22 * s, 34 * s, 22 * s, 41 * s), fill=ink, width=w)
+        d.line((14 * s, 41 * s, 30 * s, 41 * s), fill=ink, width=w)
+        return img
+    d.rounded_rectangle((24 * s, 11 * s, 40 * s, 37 * s), radius=8 * s, fill=ink)
+    d.arc((17 * s, 20 * s, 47 * s, 45 * s), start=0, end=180, fill=ink, width=w)
+    d.line((32 * s, 45 * s, 32 * s, 52 * s), fill=ink, width=w)
+    d.line((25 * s, 52 * s, 39 * s, 52 * s), fill=ink, width=w)
     return img
-
-
-def ensure_ico(img):
-    path = HERE / "assets" / "promptflow.ico"
-    if not path.exists():
-        path.parent.mkdir(exist_ok=True)
-        img.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    return path
-
-
-def autostart_enabled():
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            winreg.QueryValueEx(key, "PromptFlow")
-        return True
-    except OSError:
-        return False
-
-
-def set_autostart(on):
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-        if on:
-            pythonw = Path(sys.executable).with_name("pythonw.exe")
-            winreg.SetValueEx(key, "PromptFlow", 0, winreg.REG_SZ, f'"{pythonw}" "{HERE / "app.pyw"}" --hidden')
-        else:
-            try:
-                winreg.DeleteValue(key, "PromptFlow")
-            except FileNotFoundError:
-                pass
-
-
-def ensure_start_menu_shortcut(ico):
-    """Adds a Start menu shortcut so PromptFlow shows up in Windows search."""
-    link = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "PromptFlow.lnk"
-    if link.exists():
-        return
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    script = (
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:PF_LINK); "
-        "$s.TargetPath = $env:PF_EXE; $s.Arguments = '\"' + $env:PF_APP + '\"'; "
-        "$s.WorkingDirectory = $env:PF_DIR; $s.IconLocation = $env:PF_ICO + ',0'; $s.Save()"
-    )
-    env = dict(os.environ, PF_LINK=str(link), PF_EXE=str(pythonw), PF_APP=str(HERE / "app.pyw"),
-               PF_DIR=str(HERE), PF_ICO=str(ico))
-    try:
-        subprocess.run(["powershell", "-NoProfile", "-Command", script], env=env,
-                       creationflags=subprocess.CREATE_NO_WINDOW, timeout=20)
-    except Exception as e:
-        pf.log(f"[couldn't create the Start menu shortcut] {e}")
 
 
 def open_file(path, template=""):
     if not path.exists():
         path.write_text(template, encoding="utf-8")
-    os.startfile(path)
+    plat.open_file(path)
 
 
 class Overlay:
@@ -148,39 +98,30 @@ class Overlay:
     so the window the text will be pasted into never changes.
     """
 
-    KEY = "#010203"  # background color treated as transparent
-
     def __init__(self, root, engine):
         self.engine = engine
         self.mode = None
         self.phase = 0
         self.smooth = 0.0
         self.hide_token = 0
-        self.scale = root.winfo_fpixels("1i") / 96
+        self.scale = plat.ui_scale(root)
         self.w, self.h = int(210 * self.scale), int(44 * self.scale)
 
         self.win = tk.Toplevel(root)
         self.win.title("PromptFlow overlay")
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
-        self.win.attributes("-transparentcolor", self.KEY)
+        bg = plat.overlay_background(self.win)  # a color the OS treats as transparent
         self.win.attributes("-alpha", 0.0)
-        self.win.configure(bg=self.KEY)
+        self.win.configure(bg=bg)
         sw, sh = self.win.winfo_screenwidth(), self.win.winfo_screenheight()
-        self.win.geometry(f"{self.w}x{self.h}+{(sw - self.w) // 2}+{sh - self.h - int(80 * self.scale)}")
-        self.canvas = tk.Canvas(self.win, width=self.w, height=self.h, bg=self.KEY, highlightthickness=0)
+        y = sh - self.h - int(plat.OVERLAY_MARGIN * self.scale)
+        self.win.geometry(f"{self.w}x{self.h}+{(sw - self.w) // 2}+{y}")
+        self.canvas = tk.Canvas(self.win, width=self.w, height=self.h, bg=bg, highlightthickness=0)
         self.canvas.pack()
         self.win.update_idletasks()
-        self._make_passive()
+        plat.make_overlay_passive(self.win)
         self._tick()
-
-    def _make_passive(self):
-        user32 = ctypes.windll.user32
-        hwnd = user32.GetParent(self.win.winfo_id())
-        GWL_EXSTYLE = -20
-        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT = 0x08000000, 0x80, 0x20
-        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT)
 
     def show(self, mode):
         """mode: recording, processing, done, error, or None (hide)."""
@@ -209,7 +150,7 @@ class Overlay:
         if self.mode is None:
             return
         self._pill("#1C1C21")
-        font = ("Segoe UI", 10, "bold")
+        font = (*plat.UI_FONT, "bold")
         cy = h // 2
         if self.mode == "recording":
             level = self.engine.rec.level if self.engine.rec else 0.0
@@ -252,11 +193,11 @@ class App:
         self.hidden_once = False
         self.models = []
         self.icons = {name: make_icon(color) for name, color in ICON_COLORS.items()}
-        ico = ensure_ico(self.icons["idle"])
-        self.root.after(300, lambda: self.root.iconbitmap(str(ico)))  # customtkinter sets its own icon at 200 ms
-        threading.Thread(target=ensure_start_menu_shortcut, args=(ico,), daemon=True).start()
-        if autostart_enabled():
-            set_autostart(True)  # keep the startup entry pointing at this folder
+        plat.setup_window(self.root, self.icons["idle"], on_quit=self.quit, on_reopen=self.show)
+        # Start menu shortcut on Windows, ~/Applications/PromptFlow.app on macOS
+        threading.Thread(target=plat.ensure_launcher, args=(pf.log,), daemon=True).start()
+        if plat.autostart_enabled():
+            plat.set_autostart(True)  # keep the startup entry pointing at this folder
 
         self._build()
         self._set_status("loading")
@@ -265,14 +206,14 @@ class App:
         threading.Thread(target=self._start_engine, daemon=True).start()
         self.root.after(50, self._poll)
         if start_hidden:
-            self.root.withdraw()
+            plat.hide_window(self.root)
             self.hidden_once = True
 
     # ---------- window ----------
     def _build(self):
         r = self.root
         r.grid_columnconfigure(0, weight=1)
-        r.grid_rowconfigure(2, weight=1)
+        r.grid_rowconfigure(3, weight=1)
         bold = ctk.CTkFont(size=14, weight="bold")
         small = ctk.CTkFont(size=12)
 
@@ -289,8 +230,19 @@ class App:
                                    text_color="white", font=ctk.CTkFont(size=12, weight="bold"))
         self.status.grid(row=0, column=2, rowspan=2, sticky="e")
 
+        # macOS only: shown while a permission is missing
+        self.perm = ctk.CTkFrame(r, corner_radius=12, fg_color="#3A2A12", border_width=1, border_color="#C77418")
+        self.perm.grid_columnconfigure(0, weight=1)
+        self.perm_text = ctk.CTkLabel(self.perm, text="", justify="left", anchor="w", wraplength=300)
+        self.perm_text.grid(row=0, column=0, sticky="ew", padx=14, pady=10)
+        self.perm_button = ctk.CTkButton(self.perm, text="Open Settings", width=120, fg_color="#C77418",
+                                         hover_color="#A86212", command=self.open_permission)
+        self.perm_button.grid(row=0, column=1, padx=(0, 12))
+        self.missing = []
+        self._check_permissions()
+
         card = ctk.CTkFrame(r, corner_radius=12)
-        card.grid(row=1, column=0, sticky="ew", padx=20, pady=8)
+        card.grid(row=2, column=0, sticky="ew", padx=20, pady=8)
         card.grid_columnconfigure(1, weight=1)
 
         def row(i, text, widget, pady=7):
@@ -328,15 +280,15 @@ class App:
 
         switches = ctk.CTkFrame(card, fg_color="transparent")
         switches.grid(row=6, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 16))
-        self.auto_var = ctk.BooleanVar(value=autostart_enabled())
-        ctk.CTkSwitch(switches, text="Start with Windows", variable=self.auto_var,
+        self.auto_var = ctk.BooleanVar(value=plat.autostart_enabled())
+        ctk.CTkSwitch(switches, text=plat.AUTOSTART_LABEL, variable=self.auto_var,
                       command=self.on_autostart).pack(side="left")
         self.sound_var = ctk.BooleanVar(value=pf.SOUNDS)
         ctk.CTkSwitch(switches, text="Beeps", variable=self.sound_var,
                       command=self.on_sounds).pack(side="left", padx=(24, 0))
 
         hist = ctk.CTkFrame(r, corner_radius=12)
-        hist.grid(row=2, column=0, sticky="nsew", padx=20, pady=8)
+        hist.grid(row=3, column=0, sticky="nsew", padx=20, pady=8)
         hist.grid_columnconfigure(0, weight=1)
         hist.grid_rowconfigure(1, weight=1)
         top = ctk.CTkFrame(hist, fg_color="transparent")
@@ -352,17 +304,40 @@ class App:
         self._render_history()
 
         foot = ctk.CTkFrame(r, fg_color="transparent")
-        foot.grid(row=3, column=0, sticky="ew", padx=20, pady=(4, 18))
+        foot.grid(row=4, column=0, sticky="ew", padx=20, pady=(4, 18))
         ctk.CTkButton(foot, text="Edit dictionary", width=140, fg_color="gray25", hover_color="gray30",
                       command=lambda: open_file(pf.DICTIONARY_FILE, pf.DICTIONARY_TEMPLATE)).pack(side="left")
-        ctk.CTkButton(foot, text="Hide to tray", width=140, command=self.hide).pack(side="right")
+        ctk.CTkButton(foot, text=f"Hide to {plat.TRAY_NAME}", width=140, command=self.hide).pack(side="right")
+
+    def _check_permissions(self):
+        """Shows the permission banner while something is missing; checks again every 2 s until all is allowed."""
+        try:
+            missing = plat.missing_permissions()
+        except Exception as e:
+            pf.log(f"[permission check failed] {e}")
+            missing = []
+        if missing != self.missing:
+            self.missing = missing
+            if missing:
+                self.perm_text.configure(text=f"PromptFlow needs the {' and '.join(missing)} permission"
+                                              f"{'s' if len(missing) > 1 else ''}. Turn PromptFlow on in the list.")
+                self.perm_button.configure(text=f"Open {missing[0]}")
+                self.perm.grid(row=1, column=0, sticky="ew", padx=20, pady=(4, 0))
+            else:
+                self.perm.grid_remove()
+        if missing:
+            self.root.after(2000, self._check_permissions)
+
+    def open_permission(self):
+        if self.missing:
+            plat.open_permission_settings(self.missing[0])
 
     def _update_mode_hint(self):
         self.mode_hint.configure(text=MODE_HINTS.get(self.mode_var.get(), ""))
 
     def _update_hint(self):
         if self.engine.paused:
-            text = "Paused. Resume it from the tray icon."
+            text = f"Paused. Resume it from the {plat.TRAY_NAME} icon."
         elif self.ready:
             text = f"Hold {self.hotkey_var.get()}, speak, release."
         else:
@@ -436,10 +411,10 @@ class App:
 
     def on_autostart(self):
         try:
-            set_autostart(self.auto_var.get())
+            plat.set_autostart(self.auto_var.get())
         except OSError as e:
             pf.log(f"[autostart error] {e}")
-            self.auto_var.set(autostart_enabled())
+            self.auto_var.set(plat.autostart_enabled())
 
     # ---------- engine events ----------
     def _start_engine(self):
@@ -459,11 +434,17 @@ class App:
         self.root.after(50, self._poll)
 
     def _set_tray(self, key):
-        self.tray.icon = self.icons[key]
+        self.tray.set_icon(key)
 
     def _handle(self, kind, data):
         if kind == "status":
             self._set_status("loading", data.get("text"))
+        elif kind == "permissions":
+            self._set_status("error", "Permission")
+            self.hint.configure(text="Allow PromptFlow in System Settings (see below).")
+            self._check_permissions()
+            if self.hidden_once:
+                self.show()
         elif kind == "ready":
             self.ready = True
             self._set_status("ready")
@@ -515,23 +496,18 @@ class App:
         self._set_tray("paused" if paused else "idle")
         self._update_hint()
 
-    # ---------- tray and window ----------
+    # ---------- tray / menu bar and window ----------
     def _start_tray(self):
-        menu = pystray.Menu(
-            pystray.MenuItem("Show", lambda: self.events.put(("ui_show", {})), default=True),
-            pystray.MenuItem(lambda item: "Resume" if self.engine.paused else "Pause",
-                             lambda: self.events.put(("ui_pause", {}))),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit", lambda: self.events.put(("ui_quit", {}))),
+        self.tray = plat.Tray(
+            make_icon, ICON_COLORS,
+            on_show=lambda: self.events.put(("ui_show", {})),
+            on_pause=lambda: self.events.put(("ui_pause", {})),
+            is_paused=lambda: self.engine.paused,
+            on_quit=lambda: self.events.put(("ui_quit", {})),
         )
-        self.tray = pystray.Icon("PromptFlow", self.icons["idle"], "PromptFlow", menu)
-        threading.Thread(target=self.tray.run, daemon=True).start()
 
     def _notify(self, title, message):
-        try:
-            self.tray.notify(message, title)
-        except Exception:
-            pass
+        self.tray.notify(title, message)
 
     def toggle_pause(self):
         self.engine.paused = not self.engine.paused
@@ -539,15 +515,13 @@ class App:
         self.tray.update_menu()
 
     def show(self):
-        self.root.deiconify()
-        self.root.lift()
-        self.root.focus_force()
+        plat.show_window(self.root)
 
     def hide(self):
-        self.root.withdraw()
+        plat.hide_window(self.root)
         if not self.hidden_once:
             self.hidden_once = True
-            self._notify("PromptFlow keeps running in the background", "Open it again from the icon next to the clock.")
+            self._notify("PromptFlow keeps running in the background", f"Open it again from {plat.TRAY_WHERE}.")
 
     def quit(self):
         try:

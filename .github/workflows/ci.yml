@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ runner.arch }}-base-v1
+
+      - name: Install packages
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Unit tests
+        run: python -m pytest tests -v -p no:cacheprovider
+
+      - name: Make a speech sample (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          say -o speech.wav --file-format=WAVE --data-format=LEI16@16000 "Make the button blue and a bit bigger."
+          echo "PF_SPEECH_WAV=$PWD/speech.wav" >> "$GITHUB_ENV"
+      - name: Make a speech sample (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true  # some runner images ship without a voice
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+          $s.SetOutputToWaveFile("$PWD\speech.wav", $fmt)
+          $s.Speak("Make the button blue and a bit bigger.")
+          $s.Dispose()
+          "PF_SPEECH_WAV=$PWD\speech.wav" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Speech to text
+        env:
+          PF_TEST_MODEL: base
+          PF_SPEECH_EXPECT: button,blue
+        run: python -m pytest tests/test_speech.py -s -v -p no:cacheprovider
+
+      - name: Start the app and take a screenshot
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pythonw app.pyw &
+          else
+            python app.pyw > promptflow.log 2>&1 &
+          fi
+          sleep 45
+          python - <<'EOF'
+          import subprocess, sys
+          if sys.platform == "darwin":
+              subprocess.run(["screencapture", "-x", "screenshot.png"])
+          else:
+              from PIL import ImageGrab
+              ImageGrab.grab().save("screenshot.png")
+          EOF
+          cat promptflow.log
+          if grep -q "Traceback" promptflow.log; then echo "The app crashed"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-${{ matrix.os }}
+          path: |
+            screenshot.png
+            promptflow.log
+
+  mac-install:
+    name: install.command (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ runner.arch }}-turbo-v1
+      - name: Run the installer
+        run: bash install.command
+      - name: Check the app bundle and the running app
+        run: |
+          ls -la ~/Applications/PromptFlow.app/Contents/MacOS ~/Applications/PromptFlow.app/Contents/Resources
+          plutil -p ~/Applications/PromptFlow.app/Contents/Info.plist
+          sleep 60
+          pgrep -fl app.pyw || (echo "PromptFlow isn't running"; cat promptflow.log; exit 1)
+          screencapture -x screenshot.png || true
+          cat promptflow.log
+          if grep -q "Traceback" promptflow.log; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-${{ matrix.os }}
+          path: |
+            screenshot.png
+            promptflow.log

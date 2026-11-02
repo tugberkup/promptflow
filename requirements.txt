@@ -1,10 +1,17 @@
-﻿faster-whisper
+faster-whisper
 sounddevice
 numpy
-pynput
 pyperclip
-nvidia-cublas-cu12
-nvidia-cudnn-cu12==9.*
 customtkinter==5.2.2
-pystray
 pillow
+
+# Windows
+pynput; sys_platform == "win32"
+pystray; sys_platform == "win32"
+nvidia-cublas-cu12; sys_platform == "win32"
+nvidia-cudnn-cu12==9.*; sys_platform == "win32"
+
+# macOS (MLX runs Whisper on the GPU of Apple Silicon Macs)
+mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"
+pyobjc-framework-Quartz; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices; sys_platform == "darwin"

@@ -1,5 +1,8 @@
 * text=auto
 # cmd.exe can misread goto/labels in .bat files with LF line endings
 *.bat text eol=crlf
+# bash fails on CRLF line endings
+*.command text eol=lf
+*.sh text eol=lf
 *.ico binary
 *.png binary
