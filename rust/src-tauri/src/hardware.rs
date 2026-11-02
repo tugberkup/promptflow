@@ -4,6 +4,8 @@ use serde::Serialize;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
+// Macs only ever report Apple or None; Discrete and Integrated come from the Windows detection
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub enum GpuKind {
     /// NVIDIA / AMD / Intel Arc card with its own memory
     Discrete,
