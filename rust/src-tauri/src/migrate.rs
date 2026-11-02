@@ -3,8 +3,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use regex::Regex;
-
 const FILES: &[&str] = &["history.txt", "dictionary.txt", "settings.json"];
 
 /// Where 1.x lives: its Start menu shortcut / startup entry on Windows, its app bundle on macOS.
@@ -17,6 +15,8 @@ fn find_old_folder() -> Option<PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn candidates() -> Vec<PathBuf> {
+    use regex::Regex;
+
     let mut found = Vec::new();
     // The shortcut's arguments hold the path of app.pyw, stored as UTF-16
     let app_pyw = Regex::new(r#"([A-Za-z]:\\[^"\x00]*?)\\app\.pyw"#).unwrap();
