@@ -1,0 +1,184 @@
+name: Rust build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+    tags: ["v2*"]
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            artifact: promptflow-windows-x64
+            # Short target dir: whisper.cpp's CMake build breaks on long paths (MAX_PATH).
+            target_dir: 'C:\t'
+          - name: macOS arm64
+            os: macos-14
+            artifact: promptflow-macos-arm64
+          - name: macOS x64
+            os: macos-15-intel
+            artifact: promptflow-macos-x64
+    env:
+      CARGO_TARGET_DIR: ${{ matrix.target_dir || format('{0}/rust/src-tauri/target', github.workspace) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: rust/src-tauri
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/src-tauri -> ${{ env.CARGO_TARGET_DIR }}
+          # Only the main branch writes the cache; PRs and tags just read it.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # Windows build prerequisites (needed once whisper-rs with Vulkan lands).
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.321.1
+          install_runtime: true
+          cache: true
+          stripdown: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure libclang (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # bindgen needs libclang; GitHub's Windows images ship LLVM here.
+          LLVM_BIN='C:\Program Files\LLVM\bin'
+          if [ ! -f "$LLVM_BIN/libclang.dll" ]; then
+            echo "::error::libclang.dll not found in $LLVM_BIN"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$LLVM_BIN" >> "$GITHUB_ENV"
+          echo "VULKAN_SDK=${VULKAN_SDK:-<unset>}"
+          cmake --version
+
+      - name: Install cargo-binstall
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Install tauri-cli (prebuilt binary)
+        run: cargo binstall tauri-cli --version "^2" --locked --no-confirm
+
+      - name: Versions
+        run: |
+          rustc --version
+          cargo --version
+          cargo tauri --version
+
+      - name: Test
+        run: cargo test
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build installers
+        run: cargo tauri build
+
+      - name: Collect installers
+        id: collect
+        run: |
+          bundle="$CARGO_TARGET_DIR/release/bundle"
+          out="$RUNNER_TEMP/installers"
+          mkdir -p "$out"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$bundle"/nsis/*.exe "$out"/
+            cp "$bundle"/msi/*.msi "$out"/
+          else
+            cp "$bundle"/dmg/*.dmg "$out"/
+            # Zip the .app with ditto so permissions and signatures survive upload.
+            for app in "$bundle"/macos/*.app; do
+              ditto -c -k --keepParent "$app" "$out/$(basename "$app" .app)-${{ matrix.artifact }}.app.zip"
+            done
+          fi
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
+          ls -l "$out"
+
+      - name: Installer sizes
+        run: |
+          {
+            echo "### ${{ matrix.name }} installers"
+            echo
+            echo "| File | Size |"
+            echo "| --- | --- |"
+            for f in "${{ steps.collect.outputs.dir }}"/*; do
+              bytes=$(wc -c < "$f" | tr -d ' ')
+              mb=$(awk -v b="$bytes" 'BEGIN { printf "%.2f", b / 1048576 }')
+              echo "| \`$(basename "$f")\` | $mb MiB ($bytes bytes) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ steps.collect.outputs.dir }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v2')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: promptflow-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l dist
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --draft --verify-tag \
+              --title "PromptFlow $TAG" --generate-notes
+          fi
