@@ -112,6 +112,7 @@ async function refresh() {
   fillSelect($("language"), [["", "Auto-detect"], ...state.languages], s.LANGUAGE || "");
   $("speech-model").textContent = modelName(s.SPEECH_MODEL);
   $("sounds").checked = s.SOUNDS;
+  $("autostart").checked = state.autostart;
   $("autostart-label").textContent = state.autostart_label;
   $("hide").textContent = `Hide to ${state.tray_name}`;
   renderHistory(state.history);
@@ -291,6 +292,7 @@ function wire() {
   $("mic").onchange = (e) => set("mic", e.target.value);
   $("language").onchange = (e) => set("language", e.target.value);
   $("sounds").onchange = (e) => set("sounds", e.target.checked);
+  $("autostart").onchange = (e) => set("autostart", e.target.checked);
   $("open-history").onclick = () => invoke("open_data_file", { name: "history" });
   $("edit-dictionary").onclick = () => invoke("open_data_file", { name: "dictionary" });
   $("hide").onclick = () => getCurrentWindow().hide();

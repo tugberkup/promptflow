@@ -19,9 +19,11 @@ use std::thread;
 
 use serde::Serialize;
 use serde_json::Value;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, State, Wry};
+use tauri::{AppHandle, Emitter, Listener, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder, Wry};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 use engine::{Engine, VAD_MODEL};
 use settings::Settings;
@@ -55,6 +57,7 @@ struct WindowState {
     history: Vec<HistoryItem>,
     ready: bool,
     paused: bool,
+    autostart: bool,
     tray_name: &'static str,
     autostart_label: &'static str,
 }
@@ -92,7 +95,7 @@ fn history(engine: &Engine) -> Vec<HistoryItem> {
 }
 
 #[tauri::command]
-fn get_state(engine: State<'_, Arc<Engine>>) -> WindowState {
+fn get_state(app: AppHandle, engine: State<'_, Arc<Engine>>) -> WindowState {
     WindowState {
         version: env!("CARGO_PKG_VERSION"),
         settings: engine.settings(),
@@ -103,6 +106,7 @@ fn get_state(engine: State<'_, Arc<Engine>>) -> WindowState {
         history: history(&engine),
         ready: engine.is_ready(),
         paused: engine.paused.load(Ordering::Relaxed),
+        autostart: app.autolaunch().is_enabled().unwrap_or(false),
         tray_name: TRAY_NAME,
         autostart_label: AUTOSTART_LABEL,
     }
@@ -115,7 +119,7 @@ async fn ai_models() -> Vec<String> {
 }
 
 #[tauri::command]
-fn set_setting(engine: State<'_, Arc<Engine>>, key: String, value: Value) -> Result<(), String> {
+fn set_setting(app: AppHandle, engine: State<'_, Arc<Engine>>, key: String, value: Value) -> Result<(), String> {
     let text = value.as_str().map(String::from);
     let warm_ai = || {
         let s = engine.settings();
@@ -141,6 +145,11 @@ fn set_setting(engine: State<'_, Arc<Engine>>, key: String, value: Value) -> Res
         "mic" => engine.settings.lock().unwrap().mic = text.filter(|m| !m.is_empty()),
         "language" => engine.settings.lock().unwrap().language = text.filter(|l| !l.is_empty()),
         "sounds" => engine.settings.lock().unwrap().sounds = value.as_bool().unwrap_or(false),
+        "autostart" => {
+            let launcher = app.autolaunch();
+            let result = if value.as_bool().unwrap_or(false) { launcher.enable() } else { launcher.disable() };
+            return result.map_err(|e| e.to_string());
+        }
         "speech_model" => {
             engine.settings.lock().unwrap().speech_model = text.unwrap_or_default();
             engine.save_settings();
@@ -341,11 +350,92 @@ fn toggle_pause(app: &AppHandle) {
     let _ = app.emit("engine", engine::EngineEvent { kind: if paused { "paused" } else { "resumed" }, text: String::new() });
 }
 
+#[tauri::command]
+fn get_level(engine: State<'_, Arc<Engine>>) -> f32 {
+    engine.recorder.level()
+}
+
+// ---------------- tray icon colors ----------------
+
+#[cfg(target_os = "macos")]
+fn tray_image(state: &str) -> Image<'static> {
+    let bytes: &[u8] = match state {
+        "recording" => include_bytes!("../icons/tray/mac-recording.png"),
+        "processing" => include_bytes!("../icons/tray/mac-processing.png"),
+        "paused" => include_bytes!("../icons/tray/mac-paused.png"),
+        _ => include_bytes!("../icons/tray/mac-idle.png"),
+    };
+    Image::from_bytes(bytes).expect("tray icon")
+}
+
+#[cfg(not(target_os = "macos"))]
+fn tray_image(state: &str) -> Image<'static> {
+    let bytes: &[u8] = match state {
+        "recording" => include_bytes!("../icons/tray/recording.png"),
+        "processing" => include_bytes!("../icons/tray/processing.png"),
+        "paused" => include_bytes!("../icons/tray/paused.png"),
+        _ => include_bytes!("../icons/tray/idle.png"),
+    };
+    Image::from_bytes(bytes).expect("tray icon")
+}
+
+/// Follows the engine's events with the tray icon's color.
+fn set_tray_state(app: &AppHandle, kind: &str) {
+    let paused = app.state::<Arc<Engine>>().paused.load(Ordering::Relaxed);
+    let state = match kind {
+        "recording" => "recording",
+        "processing" => "processing",
+        "status" | "needs_model" => return,
+        _ if paused => "paused",
+        _ => "idle",
+    };
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_icon(Some(tray_image(state)));
+        // A black template image follows the light/dark menu bar on macOS
+        let _ = tray.set_icon_as_template(cfg!(target_os = "macos") && matches!(state, "idle" | "paused"));
+    }
+}
+
+/// The "Listening" pill: a transparent, click-through window that never takes focus.
+fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
+    let (w, h) = (210.0, 44.0);
+    let overlay = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
+        .title("PromptFlow overlay")
+        .inner_size(w, h)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .focusable(false)
+        .visible(false)
+        .build()?;
+    overlay.set_ignore_cursor_events(true)?;
+    if let Some(monitor) = overlay.primary_monitor()? {
+        let scale = monitor.scale_factor();
+        let (size, origin) = (monitor.size(), monitor.position());
+        let margin = if cfg!(target_os = "macos") { 110.0 } else { 80.0 }; // macOS: above the Dock
+        let x = origin.x as f64 + (size.width as f64 - w * scale) / 2.0;
+        let y = origin.y as f64 + size.height as f64 - (h + margin) * scale;
+        overlay.set_position(PhysicalPosition::new(x, y))?;
+    }
+    // Shown once and kept: it's transparent until there's something to draw, so it never has to
+    // be shown again in the middle of someone's typing
+    overlay.show()?;
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
+        // A second launch just opens the window of the running one
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .invoke_handler(tauri::generate_handler![
             get_state, ai_models, set_setting, open_data_file,
-            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link
+            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level
         ])
         .manage(Downloads::default())
         .setup(|app| {
@@ -353,6 +443,20 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let engine = Engine::new(app.handle().clone(), data_dir);
             app.manage(engine.clone());
+
+            // Started at login with --hidden: stay in the tray / menu bar
+            if !std::env::args().any(|a| a == "--hidden") {
+                show_main(app.handle());
+            }
+            if let Err(e) = create_overlay(app.handle()) {
+                engine.log(format!("[overlay error] {e}"));
+            }
+            let handle = app.handle().clone();
+            app.listen_any("engine", move |event| {
+                if let Ok(e) = serde_json::from_str::<Value>(event.payload()) {
+                    set_tray_state(&handle, e["kind"].as_str().unwrap_or(""));
+                }
+            });
 
             let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let pause = MenuItem::with_id(app, "pause", "Pause", true, None::<&str>)?;
@@ -362,7 +466,8 @@ pub fn run() {
             app.manage(PauseItem(pause));
 
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().cloned().expect("app icon"))
+                .icon(tray_image("idle"))
+                .icon_as_template(cfg!(target_os = "macos"))
                 .tooltip("PromptFlow")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -390,6 +495,9 @@ pub fn run() {
         // Closing the window keeps PromptFlow running in the tray / menu bar
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
                 api.prevent_close();
                 let _ = window.hide();
             }
