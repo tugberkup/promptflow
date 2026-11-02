@@ -34,7 +34,7 @@
     <select id="ai-model"></select>
 
     <label for="speech-model">Speech model</label>
-    <select id="speech-model"></select>
+    <button id="speech-model" class="picker">…</button>
 
     <label for="hotkey">Hotkey</label>
     <select id="hotkey"></select>
@@ -63,6 +63,17 @@
     <button class="secondary" id="edit-dictionary">Edit dictionary</button>
     <button class="primary" id="hide">Hide to tray</button>
   </footer>
+
+  <section id="catalog" class="sheet" hidden>
+    <div class="sheet-head">
+      <h2>Speech models</h2>
+      <button id="catalog-close" class="close" title="Close">✕</button>
+    </div>
+    <p id="catalog-hw" class="sub"></p>
+    <p id="catalog-reason"></p>
+    <div id="catalog-list"></div>
+    <div id="ai-box" class="ai-box"></div>
+  </section>
 
   <script src="main.js"></script>
 </body>

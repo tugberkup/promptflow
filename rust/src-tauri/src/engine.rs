@@ -20,7 +20,7 @@ use crate::stt::Stt;
 use crate::text::{self, Dictionary};
 use crate::{ai, paste};
 
-pub const VAD_MODEL: &str = "ggml-silero-v5.1.2.bin";
+pub const VAD_MODEL: &str = crate::catalog::VAD.file;
 
 #[derive(Serialize, Clone)]
 pub struct EngineEvent {

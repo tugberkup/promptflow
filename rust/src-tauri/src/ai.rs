@@ -118,6 +118,30 @@ pub fn warm(model: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Downloads a model into Ollama. `progress(done, total, status)` follows Ollama's own progress lines.
+pub fn pull(model: &str, progress: &dyn Fn(u64, u64, &str)) -> Result<(), String> {
+    use std::io::BufRead;
+    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_secs(5))).build().into();
+    let response = agent
+        .post(format!("{OLLAMA_URL}/api/pull"))
+        .send_json(json!({"model": model, "stream": true}))
+        .map_err(|e| format!("Ollama isn't running ({e})"))?;
+    let reader = std::io::BufReader::new(response.into_body().into_reader());
+    for line in reader.lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
+        if let Some(err) = msg["error"].as_str() {
+            return Err(err.to_string());
+        }
+        let status = msg["status"].as_str().unwrap_or("");
+        progress(msg["completed"].as_u64().unwrap_or(0), msg["total"].as_u64().unwrap_or(0), status);
+        if status == "success" {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
 fn has_turkish_chars(text: &str) -> bool {
     text.chars().any(|c| "çğıöşüÇĞİÖŞÜ".contains(c))
 }

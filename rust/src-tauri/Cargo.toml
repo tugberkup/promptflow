@@ -27,9 +27,12 @@ ureq = { version = "3.5.0", features = ["json"] }
 regex = "1.13.1"
 opener = "0.9.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+sha2 = "0.10"
+sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 
 [target."cfg(windows)".dependencies]
 whisper-rs = { version = "0.16.0", features = ["vulkan"] }
+windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16.0", features = ["metal"] }

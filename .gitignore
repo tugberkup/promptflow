@@ -15,3 +15,6 @@ venv/
 rust/src-tauri/target/
 rust/src-tauri/gen/
 rust/node_modules/
+
+# Claude Code agent worktrees
+.claude/

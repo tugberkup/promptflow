@@ -2,16 +2,19 @@
 
 mod ai;
 mod audio;
+mod catalog;
 mod engine;
+mod hardware;
 mod hotkey;
 mod paste;
 mod settings;
 mod stt;
 mod text;
 
+use std::collections::HashMap;
 use std::fs;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
 use serde::Serialize;
@@ -164,6 +167,164 @@ fn open_data_file(engine: State<'_, Arc<Engine>>, name: String) -> Result<(), St
     opener::open(&path).map_err(|e| e.to_string())
 }
 
+// ---------------- model catalog ----------------
+
+static HARDWARE: OnceLock<hardware::Hardware> = OnceLock::new();
+
+fn hardware() -> &'static hardware::Hardware {
+    HARDWARE.get_or_init(hardware::detect)
+}
+
+/// Downloads in progress, by model id, with their cancel flags.
+#[derive(Default)]
+struct Downloads(Mutex<HashMap<String, Arc<AtomicBool>>>);
+
+#[derive(Serialize)]
+struct ModelInfo {
+    #[serde(flatten)]
+    model: catalog::Model,
+    installed: bool,
+    downloading: bool,
+}
+
+#[derive(Serialize)]
+struct CatalogState {
+    models: Vec<ModelInfo>,
+    hardware: hardware::Hardware,
+    recommendation: catalog::Recommendation,
+    current: String,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadEvent {
+    id: String,
+    state: &'static str, // downloading, done, error, cancelled
+    done: u64,
+    total: u64,
+    error: String,
+}
+
+#[tauri::command]
+async fn get_catalog(engine: State<'_, Arc<Engine>>, downloads: State<'_, Downloads>) -> Result<CatalogState, ()> {
+    let hw = tauri::async_runtime::spawn_blocking(|| hardware().clone()).await.map_err(|_| ())?;
+    let dir = engine.models_dir();
+    let active = downloads.0.lock().unwrap();
+    let settings = engine.settings();
+    Ok(CatalogState {
+        models: catalog::MODELS
+            .iter()
+            .map(|m| ModelInfo { model: *m, installed: dir.join(m.file).exists(), downloading: active.contains_key(m.id) })
+            .collect(),
+        recommendation: catalog::recommend(&hw, settings.language.as_deref()),
+        hardware: hw,
+        current: settings.speech_model,
+    })
+}
+
+#[tauri::command]
+fn download_model(app: AppHandle, id: String) -> Result<(), String> {
+    let model = catalog::find(&id).ok_or("unknown model")?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let downloads = app.state::<Downloads>();
+        let mut active = downloads.0.lock().unwrap();
+        if active.contains_key(model.id) {
+            return Ok(());
+        }
+        active.insert(model.id.into(), cancel.clone());
+    }
+    thread::spawn(move || {
+        let engine = app.state::<Arc<Engine>>().inner().clone();
+        let dir = engine.models_dir();
+        let send = |state, done, total, error: String| {
+            let _ = app.emit("download", DownloadEvent { id: model.id.into(), state, done, total, error });
+        };
+        // The voice detector comes with the first model
+        let result = catalog::download(&catalog::VAD, &dir, &cancel, &|_, _| {})
+            .and_then(|_| catalog::download(&model, &dir, &cancel, &|done, total| send("downloading", done, total, String::new())));
+        app.state::<Downloads>().0.lock().unwrap().remove(model.id);
+        match result {
+            Ok(()) => {
+                engine.log(format!("Downloaded {}", model.file));
+                send("done", model.size, model.size, String::new());
+                // Use it right away if nothing usable is loaded yet
+                if !engine.is_ready() || engine.settings().speech_model == model.file {
+                    engine.settings.lock().unwrap().speech_model = model.file.into();
+                    engine.save_settings();
+                    engine.load_model();
+                }
+            }
+            Err(e) if cancel.load(Ordering::Relaxed) => {
+                let _ = e;
+                send("cancelled", 0, model.size, String::new());
+            }
+            Err(e) => {
+                engine.log(format!("[download error] {}: {e}", model.file));
+                send("error", 0, model.size, e.to_string());
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_download(downloads: State<'_, Downloads>, id: String) {
+    if let Some(flag) = downloads.0.lock().unwrap().get(&id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+#[tauri::command]
+fn use_model(engine: State<'_, Arc<Engine>>, id: String) -> Result<(), String> {
+    let model = catalog::find(&id).ok_or("unknown model")?;
+    if !engine.models_dir().join(model.file).exists() {
+        return Err("not downloaded yet".into());
+    }
+    engine.settings.lock().unwrap().speech_model = model.file.into();
+    engine.save_settings();
+    let engine = engine.inner().clone();
+    thread::spawn(move || engine.load_model());
+    Ok(())
+}
+
+#[derive(Serialize, Clone)]
+struct PullEvent {
+    model: String,
+    state: &'static str,
+    done: u64,
+    total: u64,
+    status: String,
+}
+
+/// Downloads an Ollama model for the AI cleanup and selects it.
+#[tauri::command]
+fn pull_ai_model(app: AppHandle, model: String) {
+    thread::spawn(move || {
+        let send = |state, done, total, status: &str| {
+            let _ = app.emit("ai_pull", PullEvent { model: model.clone(), state, done, total, status: status.into() });
+        };
+        match ai::pull(&model, &|done, total, status| send("pulling", done, total, status)) {
+            Ok(()) => {
+                let engine = app.state::<Arc<Engine>>();
+                engine.settings.lock().unwrap().ai_model = model.clone();
+                engine.save_settings();
+                send("done", 0, 0, "");
+                let _ = ai::warm(&model);
+            }
+            Err(e) => send("error", 0, 0, &e),
+        }
+    });
+}
+
+/// Opens a link in the browser (only the few the window uses).
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    if !url.starts_with("https://ollama.com/") {
+        return Err("not allowed".into());
+    }
+    opener::open_browser(&url).map_err(|e| e.to_string())
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -182,8 +343,13 @@ fn toggle_pause(app: &AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_state, ai_models, set_setting, open_data_file])
+        .invoke_handler(tauri::generate_handler![
+            get_state, ai_models, set_setting, open_data_file,
+            get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link
+        ])
+        .manage(Downloads::default())
         .setup(|app| {
+            thread::spawn(|| hardware()); // detect the GPU early; the catalog needs it
             let data_dir = app.path().app_data_dir()?;
             let engine = Engine::new(app.handle().clone(), data_dir);
             app.manage(engine.clone());

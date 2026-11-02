@@ -122,6 +122,48 @@ button.ghost, button.copy {
 }
 button.copy { background: #45464d; border: 0; min-width: 72px; padding: 5px 10px; }
 
+.picker {
+  width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 6px;
+  background: var(--accent); cursor: pointer;
+}
+.picker:hover { background: var(--accent-hover); }
+.picker::after { content: "Change ›"; float: right; opacity: .75; font-size: 12.5px; }
+
+/* Model catalog: a sheet over the whole window */
+.sheet {
+  position: fixed; inset: 0; z-index: 10;
+  padding: 18px 20px; overflow-y: auto;
+  background: var(--bg);
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-head h2 { font-size: 18px; }
+.close { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: var(--muted); }
+#catalog-reason { margin: 4px 0 12px; }
+.model {
+  background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  border: 1px solid transparent;
+}
+.model.recommended { border-color: var(--ready); }
+.model-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.model-top strong { margin-right: auto; }
+.badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: #45464d; }
+.badge.rec { background: var(--ready); }
+.badge.use { background: var(--accent); }
+.model p { margin: 4px 0 6px; color: var(--muted); font-size: 12.5px; }
+.model .meta { font-size: 12px; color: var(--text); opacity: .8; }
+.model-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.model-actions button {
+  border: 0; border-radius: 6px; padding: 5px 14px; cursor: pointer; background: var(--accent);
+}
+.model-actions button.secondary { background: #45464d; }
+.bar { flex: 1; height: 6px; border-radius: 3px; background: #45464d; overflow: hidden; }
+.bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.progress-text { font-size: 12px; color: var(--muted); min-width: 120px; text-align: right; }
+.group-title { margin: 16px 0 8px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.ai-box { background: var(--card); border-radius: 10px; padding: 12px 14px; margin-top: 16px; }
+.ai-box p { margin: 0 0 8px; }
+.ai-box button { border: 0; border-radius: 6px; padding: 5px 14px; cursor: pointer; background: var(--accent); }
+
 footer { display: flex; justify-content: space-between; }
 footer button { border: 0; border-radius: 6px; padding: 7px 0; width: 140px; cursor: pointer; }
 .primary { background: var(--accent); }

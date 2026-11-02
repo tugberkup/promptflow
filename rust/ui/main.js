@@ -110,8 +110,7 @@ async function refresh() {
   fillSelect($("mic"), [["", "System default"], ...state.mics.map((m) => [m, m])],
     state.mics.find((m) => s.MIC && m.toLowerCase().includes(s.MIC.toLowerCase())) || "");
   fillSelect($("language"), [["", "Auto-detect"], ...state.languages], s.LANGUAGE || "");
-  const models = state.speech_models.includes(s.SPEECH_MODEL) ? state.speech_models : [...state.speech_models, s.SPEECH_MODEL];
-  fillSelect($("speech-model"), models.map((m) => [m, m.replace(/^ggml-|\.bin$/g, "")]), s.SPEECH_MODEL);
+  $("speech-model").textContent = modelName(s.SPEECH_MODEL);
   $("sounds").checked = s.SOUNDS;
   $("autostart-label").textContent = state.autostart_label;
   $("hide").textContent = `Hide to ${state.tray_name}`;
@@ -122,6 +121,159 @@ async function refresh() {
 
 const set = (key, value) => invoke("set_setting", { key, value }).catch((e) => console.error(e));
 
+// ---------------- model catalog ----------------
+let catalog = null;
+const cards = {}; // model id -> { bar, text }
+
+const fmtSize = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+
+function modelName(file) {
+  const m = catalog && catalog.models.find((m) => m.file === file);
+  return m ? m.name : file.replace(/^ggml-|\.bin$/g, "");
+}
+
+function modelCard(m, tag) {
+  const card = el("div", `model${tag === "Recommended" ? " recommended" : ""}`);
+  const top = el("div", "model-top");
+  top.append(el("strong", "", m.name));
+  if (tag) top.append(el("span", `badge${tag === "Recommended" ? " rec" : ""}`, tag));
+  const inUse = m.installed && m.file === catalog.current;
+  if (inUse) top.append(el("span", "badge use", "In use"));
+  card.append(top, el("p", "", m.description));
+
+  const lang = state.settings.LANGUAGE;
+  const meta = [fmtSize(m.size), m.english_only ? "English only" : "99 languages"];
+  if (m.turkish_error && (!lang || lang === "tr")) meta.push(`Turkish error rate ${m.turkish_error.toFixed(1)}%`);
+  card.append(el("div", "meta", meta.join(" · ")));
+
+  const actions = el("div", "model-actions");
+  if (m.downloading) {
+    const bar = el("div", "bar");
+    bar.append(el("span"));
+    const text = el("span", "progress-text", "Starting…");
+    const cancel = el("button", "secondary", "Cancel");
+    cancel.onclick = () => invoke("cancel_download", { id: m.id });
+    actions.append(bar, text, cancel);
+    cards[m.id] = { bar: bar.firstChild, text };
+  } else if (m.installed) {
+    if (!inUse) {
+      const use = el("button", "", "Use");
+      use.onclick = async () => {
+        await invoke("use_model", { id: m.id });
+        state.ready = false;
+        backToReady();
+        renderCatalog();
+      };
+      actions.append(use);
+    } else {
+      actions.append(el("span", "progress-text", "Installed"));
+    }
+  } else {
+    const dl = el("button", "", `Download ${fmtSize(m.size)}`);
+    dl.onclick = async () => {
+      await invoke("download_model", { id: m.id });
+      renderCatalog();
+    };
+    actions.append(dl);
+  }
+  card.append(actions);
+  return card;
+}
+
+async function renderAiBox(rec) {
+  const box = $("ai-box");
+  box.replaceChildren();
+  box.append(el("strong", "", "AI cleanup (Clean and Prompt modes)"));
+  if (!rec.ai_model) {
+    box.append(el("p", "sub", "This computer is better off in Raw mode: an AI model would make every dictation slow."));
+    return;
+  }
+  const installed = await invoke("ai_models");
+  const p = el("p", "");
+  p.append(`Recommended for your computer: `, el("strong", "", rec.ai_model), ` (through Ollama).`);
+  box.append(p);
+  if (installed.includes(rec.ai_model)) {
+    box.append(el("span", "progress-text", "Installed ✓"));
+    return;
+  }
+  const actions = el("div", "model-actions");
+  const pull = el("button", "", `Download ${rec.ai_model}`);
+  const status = el("span", "progress-text", installed.length ? "" : "Needs Ollama running.");
+  pull.onclick = () => {
+    pull.disabled = true;
+    status.textContent = "Starting…";
+    invoke("pull_ai_model", { model: rec.ai_model });
+  };
+  const get = el("button", "secondary", "Get Ollama");
+  get.onclick = () => invoke("open_link", { url: "https://ollama.com/download" });
+  actions.append(pull, get, status);
+  box.append(actions);
+  cards.ai = { text: status, button: pull };
+}
+
+async function renderCatalog() {
+  catalog = await invoke("get_catalog");
+  const { hardware: hw, recommendation: rec } = catalog;
+  const parts = [hw.gpu];
+  if (!hw.apple_silicon && hw.vram_gb >= 1) parts.push(`${Math.round(hw.vram_gb)} GB video memory`);
+  parts.push(`${Math.round(hw.ram_gb)} GB RAM`);
+  $("catalog-hw").textContent = parts.join(" · ");
+  $("catalog-reason").textContent = rec.reason;
+
+  const tags = {};
+  if (rec.more_accurate) tags[rec.more_accurate] = "More accurate";
+  if (rec.faster) tags[rec.faster] = "Faster";
+  tags[rec.recommended] = "Recommended";
+  const order = [rec.recommended, rec.faster, rec.more_accurate].filter(Boolean);
+  const list = $("catalog-list");
+  list.replaceChildren(el("div", "group-title", "For your computer"));
+  for (const id of order) list.append(modelCard(catalog.models.find((m) => m.id === id), tags[id]));
+  list.append(el("div", "group-title", "Other models"));
+  for (const m of catalog.models) if (!tags[m.id]) list.append(modelCard(m));
+  $("speech-model").textContent = modelName(catalog.current);
+  renderAiBox(rec);
+}
+
+function openCatalog() {
+  $("catalog").hidden = false;
+  renderCatalog();
+}
+
+function wireCatalog() {
+  $("speech-model").onclick = openCatalog;
+  $("catalog-close").onclick = () => ($("catalog").hidden = true);
+  listen("download", ({ payload: { id, state: st, done, total, error } }) => {
+    const card = cards[id];
+    if (st === "downloading" && card) {
+      card.bar.style.width = `${((done / total) * 100).toFixed(1)}%`;
+      card.text.textContent = `${fmtSize(done)} / ${fmtSize(total)}`;
+    } else if (st === "error") {
+      renderCatalog().then(() => alert(`Download failed: ${error}`));
+    } else if (st !== "downloading") {
+      renderCatalog();
+    }
+  });
+  listen("ai_pull", ({ payload: { state: st, done, total, status } }) => {
+    const card = cards.ai;
+    if (!card) return;
+    if (st === "pulling") card.text.textContent = total ? `${status} ${Math.round((done / total) * 100)}%` : status;
+    else if (st === "done") {
+      card.text.textContent = "Installed ✓";
+      card.button.remove();
+      loadAiModels();
+    } else {
+      card.text.textContent = status;
+      card.button.disabled = false;
+    }
+  });
+}
+
 function wire() {
   $("mode").addEventListener("click", (e) => {
     const mode = e.target.dataset.value;
@@ -131,11 +283,6 @@ function wire() {
     set("mode", mode);
   });
   $("ai-model").onchange = (e) => set("ai_model", e.target.value);
-  $("speech-model").onchange = (e) => {
-    state.ready = false;
-    backToReady();
-    set("speech_model", e.target.value);
-  };
   $("hotkey").onchange = (e) => {
     state.settings.HOTKEY = e.target.value;
     set("hotkey", e.target.value);
@@ -160,7 +307,8 @@ function wire() {
       case "needs_model":
         state.ready = false;
         setStatus("model");
-        $("hint").textContent = `Download a speech model first (${text}).`;
+        $("hint").textContent = "Pick a speech model to get started.";
+        openCatalog();
         break;
       case "recording":
         setStatus("recording");
@@ -190,4 +338,10 @@ function wire() {
 }
 
 wire();
-refresh();
+wireCatalog();
+refresh().then(async () => {
+  catalog = await invoke("get_catalog");
+  $("speech-model").textContent = modelName(catalog.current);
+  // First start: nothing downloaded yet
+  if (!catalog.models.some((m) => m.installed)) openCatalog();
+});
