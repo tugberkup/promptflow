@@ -233,11 +233,11 @@ class App:
         # macOS only: shown while a permission is missing
         self.perm = ctk.CTkFrame(r, corner_radius=12, fg_color="#3A2A12", border_width=1, border_color="#C77418")
         self.perm.grid_columnconfigure(0, weight=1)
-        self.perm_text = ctk.CTkLabel(self.perm, text="", justify="left", anchor="w", wraplength=300)
-        self.perm_text.grid(row=0, column=0, sticky="ew", padx=14, pady=10)
-        self.perm_button = ctk.CTkButton(self.perm, text="Open Settings", width=120, fg_color="#C77418",
+        self.perm_text = ctk.CTkLabel(self.perm, text="", justify="left", anchor="w", wraplength=390)
+        self.perm_text.grid(row=0, column=0, sticky="ew", padx=14, pady=(10, 4))
+        self.perm_button = ctk.CTkButton(self.perm, text="Open Settings", fg_color="#C77418",
                                          hover_color="#A86212", command=self.open_permission)
-        self.perm_button.grid(row=0, column=1, padx=(0, 12))
+        self.perm_button.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 12))
         self.missing = []
         self._check_permissions()
 

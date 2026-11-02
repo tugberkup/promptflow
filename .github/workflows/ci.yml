@@ -56,11 +56,7 @@ jobs:
       - name: Start the app and take a screenshot
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pythonw app.pyw &
-          else
-            python app.pyw > promptflow.log 2>&1 &
-          fi
+          PYTHONUNBUFFERED=1 python app.pyw > promptflow.log 2>&1 &
           sleep 45
           python - <<'EOF'
           import subprocess, sys

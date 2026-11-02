@@ -11,6 +11,7 @@ macOS asks for three permissions, all granted to "PromptFlow" (the app bundle in
 import fcntl
 import hashlib
 import io
+import json
 import platform
 import plistlib
 import queue
@@ -168,6 +169,10 @@ class HotkeyListener:
         Quartz.CFRunLoopRun()
 
     def start(self):
+        if hasattr(Quartz, "CGPreflightListenEventAccess") and not Quartz.CGPreflightListenEventAccess():
+            # Without it the tap is still created but never receives a key
+            raise PermissionError("PromptFlow can't see the hotkey yet. Allow it in System Settings → "
+                                  "Privacy & Security → Input Monitoring.")
         mask = (Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown) | Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp)
                 | Quartz.CGEventMaskBit(Quartz.kCGEventFlagsChanged))
         self.tap = Quartz.CGEventTapCreate(
@@ -252,18 +257,99 @@ def ui_scale(root):
     return 1.0  # Tk on macOS already works in points
 
 
-LAUNCHER = """#!/bin/bash
-# Created by PromptFlow. macOS grants the microphone, Input Monitoring and Accessibility
-# permissions to this app, and Python runs as its child so it inherits them.
+# macOS grants the microphone, Input Monitoring and Accessibility permissions to the app whose launcher
+# started Python, but only if that launcher is a real program: for a script it falls back to "python3.12".
+# So the launcher is this small C program, compiled on the user's Mac (the compiler comes with git / Homebrew).
+LAUNCHER_C = r"""// Created by PromptFlow: starts Python as a child, so it runs with this app's permissions.
+#include <fcntl.h>
+#include <mach/machine.h>
+#include <spawn.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+extern char **environ;
+
+int main(int argc, char *argv[]) {
+    char *python = @PYTHON@, *app = @APP@;
+    chdir(@HERE@);
+    int log = open(@LOG@, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (log >= 0) {
+        dup2(log, 1);
+        dup2(log, 2);
+        close(log);
+    }
+    setenv("PYTHONUNBUFFERED", "1", 1);
+    setenv("LANG", "en_US.UTF-8", 0);
+
+    char **args = calloc(argc + 2, sizeof(char *));
+    args[0] = python;
+    args[1] = app;
+    for (int i = 1; i < argc; i++) args[i + 1] = argv[i];
+
+    // Run Python as the architecture its packages were installed for, never under Rosetta by accident
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    cpu_type_t cpu = @CPU@;
+    size_t count;
+    posix_spawnattr_setbinpref_np(&attr, 1, &cpu, &count);
+    pid_t pid;
+    if (posix_spawn(&pid, python, NULL, &attr, args, environ) != 0) return 1;
+    int status;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+"""
+
+# Used when there's no compiler; macOS then lists the permissions under "python3.x" instead of PromptFlow
+LAUNCHER_SH = """#!/bin/bash
 cd {here}
 exec >{log} 2>&1
-export LANG="${{LANG:-en_US.UTF-8}}"
-{python} {app} "$@"
+export LANG="${{LANG:-en_US.UTF-8}}" PYTHONUNBUFFERED=1
+/usr/bin/arch -{arch} {python} {app} "$@"
 """
 
 
 def _quote(path):
     return "'" + str(path).replace("'", "'\\''") + "'"
+
+
+def _c_string(text):
+    return json.dumps(str(text), ensure_ascii=False)  # JSON escapes are valid C escapes
+
+
+def _has_compiler():
+    """True if the Command Line Tools are installed (without them /usr/bin/cc only offers to install them)."""
+    try:
+        return subprocess.run(["xcode-select", "-p"], capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+def _write_launcher(exe, arch, log):
+    """Compiles the C launcher, or writes the script one. Returns the description stored next to it."""
+    source = (LAUNCHER_C.replace("@PYTHON@", _c_string(sys.executable)).replace("@APP@", _c_string(HERE / "app.pyw"))
+              .replace("@HERE@", _c_string(HERE)).replace("@LOG@", _c_string(HERE / "promptflow.log"))
+              .replace("@CPU@", "CPU_TYPE_ARM64" if arch == "arm64" else "CPU_TYPE_X86_64"))
+    if _has_compiler():
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "launcher.c"
+            src.write_text(source, encoding="utf-8")
+            result = subprocess.run(["cc", "-O2", "-arch", arch, "-o", str(exe), str(src)],
+                                    capture_output=True, text=True, timeout=120)
+        if result.returncode == 0:
+            return source
+        log(f"[couldn't compile the launcher, using a script] {result.stderr.strip()}")
+    else:
+        log("No compiler found (xcode-select --install), so macOS will list the permissions under Python.")
+    script = LAUNCHER_SH.format(here=_quote(HERE), log=_quote(HERE / "promptflow.log"), arch=arch,
+                                python=_quote(sys.executable), app=_quote(HERE / "app.pyw"))
+    exe.write_text(script)
+    return script
+
+
+def _launcher_spec(arch):
+    return f"{sys.executable}\n{HERE}\n{arch}\n"
 
 
 def ensure_launcher(log=print):
@@ -272,9 +358,9 @@ def ensure_launcher(log=print):
     It shows up in Spotlight and Launchpad, and macOS shows "PromptFlow" in its permission lists.
     """
     exe = APP_DIR / "Contents" / "MacOS" / "PromptFlow"
-    script = LAUNCHER.format(here=_quote(HERE), log=_quote(HERE / "promptflow.log"),
-                             python=_quote(sys.executable), app=_quote(HERE / "app.pyw"))
-    if exe.exists() and exe.read_text() == script:
+    spec_file = APP_DIR / "Contents" / "Resources" / "launcher.txt"  # what the launcher was built for
+    arch = platform.machine()  # arm64 or x86_64
+    if exe.exists() and spec_file.exists() and spec_file.read_text().startswith(_launcher_spec(arch)):
         return
     try:
         import promptflow
@@ -295,6 +381,7 @@ def ensure_launcher(log=print):
             "CFBundleShortVersionString": version,
             "CFBundleVersion": version,
             "LSMinimumSystemVersion": "12.0",
+            "LSArchitecturePriority": [arch],
             "LSUIElement": True,  # the launcher itself has no Dock icon; the Python process shows one
             "NSHighResolutionCapable": True,
             "NSMicrophoneUsageDescription": "PromptFlow records while you hold the hotkey and turns your speech "
@@ -302,8 +389,10 @@ def ensure_launcher(log=print):
         }
         with open(APP_DIR / "Contents" / "Info.plist", "wb") as f:
             plistlib.dump(info, f)
-        exe.write_text(script)
+        exe.unlink(missing_ok=True)
+        built_from = _write_launcher(exe, arch, log)
         exe.chmod(0o755)
+        spec_file.write_text(_launcher_spec(arch) + built_from)
         png = HERE / "assets" / "promptflow.png"
         if png.exists():
             from PIL import Image

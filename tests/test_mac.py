@@ -76,7 +76,13 @@ def test_app_bundle(tmp_path, monkeypatch):
     assert info["CFBundleExecutable"] == "PromptFlow" and "NSMicrophoneUsageDescription" in info
     exe = tmp_path / "PromptFlow.app" / "Contents" / "MacOS" / "PromptFlow"
     assert exe.stat().st_mode & 0o111
-    assert sys.executable in exe.read_text()
+    spec = (tmp_path / "PromptFlow.app" / "Contents" / "Resources" / "launcher.txt").read_text()
+    assert sys.executable in spec
+    if plat._has_compiler():
+        assert exe.read_bytes()[:4] == b"\xcf\xfa\xed\xfe", "the launcher should be a compiled program"
+    built = exe.stat().st_mtime_ns
+    plat.ensure_launcher()  # already up to date: not rebuilt
+    assert exe.stat().st_mtime_ns == built
     assert (tmp_path / "PromptFlow.app" / "Contents" / "Resources" / "PromptFlow.icns").exists()
 
 
