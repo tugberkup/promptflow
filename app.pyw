@@ -1,8 +1,8 @@
 """
-PromptFlow arayüzü: tepsi ikonu, ayar penceresi ve ekranın altındaki kayıt balonu.
+PromptFlow desktop app: tray icon, settings window and the recording pill at the bottom of the screen.
 
-Motor promptflow.py'dedir; bu dosya pythonw ile konsol penceresi açmadan çalışır.
-"--gizli" ile başlatılırsa (Windows açılışında) pencere açılmaz, sadece tepsiye yerleşir.
+The engine lives in promptflow.py; this file runs under pythonw, without a console window.
+Started with "--hidden" (as at Windows startup) it skips the window and sits in the tray.
 """
 import ctypes
 import hashlib
@@ -18,20 +18,20 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# pythonw'da konsol yok: çıktıyı log dosyasına yaz, yoksa bazı kütüphaneler yazamayınca çöker
+# pythonw has no console: send output to a log file, otherwise some libraries crash when they can't write
 if sys.stdout is None or sys.stderr is None:
     sys.stdout = sys.stderr = open(HERE / "promptflow.log", "w", encoding="utf-8", buffering=1)
 
-# Tek kopya: iki PromptFlow aynı anda çalışırsa her dikte iki kez yapıştırılır
+# Single instance: with two PromptFlows running, every dictation would be pasted twice
 _mutex = ctypes.windll.kernel32.CreateMutexW(
     None, False, "PromptFlow-" + hashlib.md5(str(HERE).lower().encode()).hexdigest()[:8])
 if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
     ctypes.windll.user32.MessageBoxW(
-        None, "PromptFlow zaten çalışıyor. Saatin yanındaki ikona tıkla.", "PromptFlow", 0x40
+        None, "PromptFlow is already running. Click the icon next to the clock.", "PromptFlow", 0x40
     )
     sys.exit(0)
 
-# Görev çubuğunda Python'un değil kendi ikonumuz görünsün
+# Show our own icon in the taskbar instead of Python's
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PromptFlow")
 
 import tkinter as tk  # noqa: E402
@@ -43,25 +43,25 @@ from PIL import Image, ImageDraw  # noqa: E402
 
 import promptflow as pf  # noqa: E402
 
-MODES = {"Temizle": "temizle", "Prompt": "prompt", "Ham": None}
+MODES = {"Clean": "clean", "Prompt": "prompt", "Raw": None}
 MODE_HINTS = {
-    "Temizle": "\"ııı, şey\"leri ve tekrarları siler, noktalamayı düzeltir.",
-    "Prompt": "Anlattığını madde madde, düzgün bir prompt'a çevirir.",
-    "Ham": "Whisper ne duyduysa o. Yapay zeka kullanılmaz, en hızlısı.",
+    "Clean": "Removes fillers and repetitions, fixes punctuation.",
+    "Prompt": "Rewrites what you said as a clear, structured prompt.",
+    "Raw": "Exactly what Whisper heard. No AI, fastest.",
 }
 HOTKEYS = {
-    "Sağ Ctrl": "ctrl_r", "Sağ Shift": "shift_r", "F8": "f8", "F9": "f9",
+    "Right Ctrl": "ctrl_r", "Right Shift": "shift_r", "F8": "f8", "F9": "f9",
     "F10": "f10", "Scroll Lock": "scroll_lock", "Pause": "pause",
 }
-LANGS = {"Otomatik": None, "Türkçe": "tr", "English": "en"}
+LANGS = {"Auto-detect": None, **{name: code for code, name in pf.LANGUAGE_NAMES.items()}}
 
 STATUS_STYLE = {
-    "loading": ("Yükleniyor…", "#4B5563"),
-    "ready": ("Hazır", "#1F8F4E"),
-    "recording": ("Dinliyor", "#D93F45"),
-    "processing": ("Yazılıyor…", "#C77418"),
-    "paused": ("Duraklatıldı", "#4B5563"),
-    "error": ("Hata", "#D93F45"),
+    "loading": ("Loading…", "#4B5563"),
+    "ready": ("Ready", "#1F8F4E"),
+    "recording": ("Listening", "#D93F45"),
+    "processing": ("Writing…", "#C77418"),
+    "paused": ("Paused", "#4B5563"),
+    "error": ("Error", "#D93F45"),
 }
 ICON_COLORS = {"idle": "#5B5BD6", "recording": "#E5484D", "processing": "#E08A1E", "paused": "#6B7280"}
 
@@ -73,7 +73,7 @@ def label_for(mapping, value):
 
 
 def make_icon(color, size=256):
-    """Renkli daire içinde beyaz mikrofon."""
+    """A white microphone on a colored circle."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     s = size / 64
@@ -107,7 +107,7 @@ def set_autostart(on):
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         if on:
             pythonw = Path(sys.executable).with_name("pythonw.exe")
-            winreg.SetValueEx(key, "PromptFlow", 0, winreg.REG_SZ, f'"{pythonw}" "{HERE / "app.pyw"}" --gizli')
+            winreg.SetValueEx(key, "PromptFlow", 0, winreg.REG_SZ, f'"{pythonw}" "{HERE / "app.pyw"}" --hidden')
         else:
             try:
                 winreg.DeleteValue(key, "PromptFlow")
@@ -116,7 +116,7 @@ def set_autostart(on):
 
 
 def ensure_start_menu_shortcut(ico):
-    """Windows aramasında "PromptFlow" yazınca çıksın diye Başlat menüsüne kısayol koyar."""
+    """Adds a Start menu shortcut so PromptFlow shows up in Windows search."""
     link = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "PromptFlow.lnk"
     if link.exists():
         return
@@ -132,7 +132,7 @@ def ensure_start_menu_shortcut(ico):
         subprocess.run(["powershell", "-NoProfile", "-Command", script], env=env,
                        creationflags=subprocess.CREATE_NO_WINDOW, timeout=20)
     except Exception as e:
-        pf.log(f"[kısayol oluşturulamadı] {e}")
+        pf.log(f"[couldn't create the Start menu shortcut] {e}")
 
 
 def open_file(path, template=""):
@@ -142,13 +142,13 @@ def open_file(path, template=""):
 
 
 class Overlay:
-    """Ekranın altında kayıt durumunu gösteren küçük balon.
+    """A small pill at the bottom of the screen showing the recording state.
 
-    Hep açık durur ama görünmezdir (alpha 0); odak çalmaz ve tıklamaları alttaki pencereye geçirir,
-    böylece yazının yapıştırılacağı pencere hiç değişmez.
+    It is always open but invisible (alpha 0); it never takes focus and lets clicks through,
+    so the window the text will be pasted into never changes.
     """
 
-    KEY = "#010203"  # şeffaf sayılan arka plan rengi
+    KEY = "#010203"  # background color treated as transparent
 
     def __init__(self, root, engine):
         self.engine = engine
@@ -160,7 +160,7 @@ class Overlay:
         self.w, self.h = int(210 * self.scale), int(44 * self.scale)
 
         self.win = tk.Toplevel(root)
-        self.win.title("PromptFlow balon")
+        self.win.title("PromptFlow overlay")
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
         self.win.attributes("-transparentcolor", self.KEY)
@@ -183,7 +183,7 @@ class Overlay:
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT)
 
     def show(self, mode):
-        """mode: recording, processing, done, error ya da None (gizle)."""
+        """mode: recording, processing, done, error, or None (hide)."""
         self.mode = mode
         self.hide_token += 1
         self.win.attributes("-alpha", 0.0 if mode is None else 0.96)
@@ -217,21 +217,21 @@ class Overlay:
             pulse = 4 + 1.5 * math.sin(self.phase * 0.25)
             x = 22 * s
             c.create_oval(x - pulse * s, cy - pulse * s, x + pulse * s, cy + pulse * s, fill="#E5484D", outline="")
-            c.create_text(36 * s, cy, text="Dinliyorum", fill="white", font=font, anchor="w")
+            c.create_text(36 * s, cy, text="Listening", fill="white", font=font, anchor="w")
             for i in range(5):
                 bar = (3 + 15 * self.smooth * (0.55 + 0.45 * math.sin(self.phase * 0.5 + i * 1.3))) * s
                 bx = (140 + i * 10) * s
                 c.create_rectangle(bx, cy - bar, bx + 5 * s, cy + bar, fill="#E5484D", outline="")
         elif self.mode == "processing":
-            c.create_text(22 * s, cy, text="Yazıya çevriliyor", fill="white", font=font, anchor="w")
+            c.create_text(22 * s, cy, text="Transcribing", fill="white", font=font, anchor="w")
             for i in range(3):
                 r = (2.5 + 1.5 * max(0.0, math.sin(self.phase * 0.3 - i * 0.9))) * s
                 dx = (160 + i * 12) * s
                 c.create_oval(dx - r, cy - r, dx + r, cy + r, fill="#E08A1E", outline="")
         elif self.mode == "done":
-            c.create_text(self.w // 2, cy, text="✓  Yapıştırıldı", fill="#4ADE80", font=font)
+            c.create_text(self.w // 2, cy, text="✓  Pasted", fill="#4ADE80", font=font)
         elif self.mode == "error":
-            c.create_text(self.w // 2, cy, text="!  Bir hata oldu", fill="#F87171", font=font)
+            c.create_text(self.w // 2, cy, text="!  Something went wrong", fill="#F87171", font=font)
 
 
 class App:
@@ -253,8 +253,10 @@ class App:
         self.models = []
         self.icons = {name: make_icon(color) for name, color in ICON_COLORS.items()}
         ico = ensure_ico(self.icons["idle"])
-        self.root.after(300, lambda: self.root.iconbitmap(str(ico)))  # customtkinter kendi ikonunu 200 ms'de koyuyor
+        self.root.after(300, lambda: self.root.iconbitmap(str(ico)))  # customtkinter sets its own icon at 200 ms
         threading.Thread(target=ensure_start_menu_shortcut, args=(ico,), daemon=True).start()
+        if autostart_enabled():
+            set_autostart(True)  # keep the startup entry pointing at this folder
 
         self._build()
         self._set_status("loading")
@@ -266,7 +268,7 @@ class App:
             self.root.withdraw()
             self.hidden_once = True
 
-    # ---------- arayüz ----------
+    # ---------- window ----------
     def _build(self):
         r = self.root
         r.grid_columnconfigure(0, weight=1)
@@ -296,40 +298,41 @@ class App:
             widget.grid(row=i, column=1, sticky="ew", padx=(0, 16), pady=pady)
 
         self.mode_var = ctk.StringVar(value=label_for(MODES, pf.AI_MODE))
-        row(0, "Mod", ctk.CTkSegmentedButton(card, values=list(MODES), variable=self.mode_var,
-                                              command=self.on_mode), pady=(16, 2))
+        row(0, "Mode", ctk.CTkSegmentedButton(card, values=list(MODES), variable=self.mode_var,
+                                               command=self.on_mode), pady=(16, 2))
         self.mode_hint = ctk.CTkLabel(card, text="", text_color="gray60", font=small, anchor="w")
         self.mode_hint.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=(0, 6))
         self._update_mode_hint()
 
-        # Kurulu modeller Ollama'dan arka planda alınır (Ollama kapalıysa pencere beklemesin)
+        # Installed models are fetched from Ollama in the background (so the window doesn't wait if it's off)
         self.model_var = ctk.StringVar(value=pf.AI_MODEL)
         self.model_menu = ctk.CTkOptionMenu(card, values=[pf.AI_MODEL], variable=self.model_var,
                                             command=self.on_model, dynamic_resizing=False)
-        row(2, "YZ modeli", self.model_menu)
+        row(2, "AI model", self.model_menu)
         threading.Thread(target=lambda: self.events.put(("models", {"names": pf.ai_list_models()})),
                          daemon=True).start()
 
         self.hotkey_var = ctk.StringVar(value=label_for(HOTKEYS, pf.HOTKEY))
-        row(3, "Kısayol", ctk.CTkOptionMenu(card, values=list(HOTKEYS), variable=self.hotkey_var,
-                                             command=self.on_hotkey))
+        row(3, "Hotkey", ctk.CTkOptionMenu(card, values=list(HOTKEYS), variable=self.hotkey_var,
+                                            command=self.on_hotkey))
 
-        mics = pf.list_mics() or ["Varsayılan"]
+        mics = pf.list_mics() or ["Default"]
         current = next((m for m in mics if pf.MIC and pf.MIC.lower() in m.lower()), mics[0])
         self.mic_var = ctk.StringVar(value=current)
-        row(4, "Mikrofon", ctk.CTkOptionMenu(card, values=mics, variable=self.mic_var, command=self.on_mic,
-                                              dynamic_resizing=False))
+        row(4, "Microphone", ctk.CTkOptionMenu(card, values=mics, variable=self.mic_var, command=self.on_mic,
+                                                dynamic_resizing=False))
 
         self.lang_var = ctk.StringVar(value=label_for(LANGS, pf.LANGUAGE))
-        row(5, "Dil", ctk.CTkOptionMenu(card, values=list(LANGS), variable=self.lang_var, command=self.on_lang))
+        row(5, "Language", ctk.CTkOptionMenu(card, values=list(LANGS), variable=self.lang_var,
+                                              command=self.on_lang))
 
         switches = ctk.CTkFrame(card, fg_color="transparent")
         switches.grid(row=6, column=0, columnspan=2, sticky="ew", padx=16, pady=(8, 16))
         self.auto_var = ctk.BooleanVar(value=autostart_enabled())
-        ctk.CTkSwitch(switches, text="Windows ile başlat", variable=self.auto_var,
+        ctk.CTkSwitch(switches, text="Start with Windows", variable=self.auto_var,
                       command=self.on_autostart).pack(side="left")
         self.sound_var = ctk.BooleanVar(value=pf.SOUNDS)
-        ctk.CTkSwitch(switches, text="Bip sesleri", variable=self.sound_var,
+        ctk.CTkSwitch(switches, text="Beeps", variable=self.sound_var,
                       command=self.on_sounds).pack(side="left", padx=(24, 0))
 
         hist = ctk.CTkFrame(r, corner_radius=12)
@@ -338,8 +341,8 @@ class App:
         hist.grid_rowconfigure(1, weight=1)
         top = ctk.CTkFrame(hist, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 2))
-        ctk.CTkLabel(top, text="Son dikteler", font=bold).pack(side="left")
-        ctk.CTkButton(top, text="Tüm geçmiş", width=96, height=26, fg_color="transparent", border_width=1,
+        ctk.CTkLabel(top, text="Recent dictations", font=bold).pack(side="left")
+        ctk.CTkButton(top, text="Full history", width=96, height=26, fg_color="transparent", border_width=1,
                       border_color="gray35", hover_color="gray25",
                       command=lambda: open_file(pf.HISTORY_FILE)).pack(side="right")
         self.hist_list = ctk.CTkScrollableFrame(hist, fg_color="transparent")
@@ -350,20 +353,20 @@ class App:
 
         foot = ctk.CTkFrame(r, fg_color="transparent")
         foot.grid(row=3, column=0, sticky="ew", padx=20, pady=(4, 18))
-        ctk.CTkButton(foot, text="Sözlüğü düzenle", width=140, fg_color="gray25", hover_color="gray30",
-                      command=lambda: open_file(pf.DICTIONARY_FILE, pf.SOZLUK_TEMPLATE)).pack(side="left")
-        ctk.CTkButton(foot, text="Arka plana al", width=140, command=self.hide).pack(side="right")
+        ctk.CTkButton(foot, text="Edit dictionary", width=140, fg_color="gray25", hover_color="gray30",
+                      command=lambda: open_file(pf.DICTIONARY_FILE, pf.DICTIONARY_TEMPLATE)).pack(side="left")
+        ctk.CTkButton(foot, text="Hide to tray", width=140, command=self.hide).pack(side="right")
 
     def _update_mode_hint(self):
         self.mode_hint.configure(text=MODE_HINTS.get(self.mode_var.get(), ""))
 
     def _update_hint(self):
         if self.engine.paused:
-            text = "Duraklatıldı. Tepsi ikonundan devam ettirebilirsin."
+            text = "Paused. Resume it from the tray icon."
         elif self.ready:
-            text = f"{self.hotkey_var.get()} tuşunu basılı tut, konuş, bırak."
+            text = f"Hold {self.hotkey_var.get()}, speak, release."
         else:
-            text = "Konuşma modeli yükleniyor, birkaç saniye sürer."
+            text = "Loading the speech model, takes a few seconds."
         self.hint.configure(text=text)
 
     def _set_status(self, key, text=None):
@@ -374,13 +377,13 @@ class App:
         for child in self.hist_list.winfo_children():
             child.destroy()
         if not self.history:
-            ctk.CTkLabel(self.hist_list, text="Henüz dikte yok.\nKısayolu basılı tut ve konuşmaya başla.",
+            ctk.CTkLabel(self.hist_list, text="No dictations yet.\nHold the hotkey and start talking.",
                          text_color="gray55").grid(row=0, column=0, pady=40)
             return
         today = datetime.now().strftime("%Y-%m-%d")
         for i, (stamp, text) in enumerate(self.history[:20]):
             day, _, clock = stamp.partition(" ")
-            when = clock[:5] if day == today else f"{day[8:10]}.{day[5:7]} {clock[:5]}"
+            when = clock[:5] if day == today else f"{day[5:7]}/{day[8:10]} {clock[:5]}"
             preview = text if len(text) <= 240 else text[:240] + "…"
 
             item = ctk.CTkFrame(self.hist_list, corner_radius=8, fg_color="gray17")
@@ -390,25 +393,25 @@ class App:
                 row=0, column=0, sticky="w", padx=12, pady=(8, 0))
             ctk.CTkLabel(item, text=preview, justify="left", anchor="w", wraplength=300).grid(
                 row=1, column=0, sticky="ew", padx=12, pady=(0, 10))
-            btn = ctk.CTkButton(item, text="Kopyala", width=78, height=28, fg_color="gray28", hover_color="gray33")
+            btn = ctk.CTkButton(item, text="Copy", width=78, height=28, fg_color="gray28", hover_color="gray33")
             btn.configure(command=lambda t=text, b=btn: self._copy(t, b))
             btn.grid(row=0, column=1, rowspan=2, padx=10)
 
     def _copy(self, text, button):
         pyperclip.copy(text)
-        button.configure(text="Kopyalandı")
-        button.after(1200, lambda: button.winfo_exists() and button.configure(text="Kopyala"))
+        button.configure(text="Copied")
+        button.after(1200, lambda: button.winfo_exists() and button.configure(text="Copy"))
 
-    # ---------- ayarlar ----------
+    # ---------- settings ----------
     def on_mode(self, value):
         pf.AI_MODE = MODES[value]
         pf.save_settings()
         self._update_mode_hint()
-        threading.Thread(target=pf.ai_warm, daemon=True).start()  # modeli şimdiden belleğe al
+        threading.Thread(target=pf.ai_warm, daemon=True).start()  # load the model now
 
     def on_model(self, value):
         if value not in self.models:
-            self.model_var.set(pf.AI_MODEL)  # "Ollama bulunamadı" gibi bir bilgi satırı seçildi
+            self.model_var.set(pf.AI_MODEL)  # an info line such as "Ollama not found" was picked
             return
         pf.AI_MODEL = value
         pf.save_settings()
@@ -435,16 +438,16 @@ class App:
         try:
             set_autostart(self.auto_var.get())
         except OSError as e:
-            pf.log(f"[otomatik başlatma hatası] {e}")
+            pf.log(f"[autostart error] {e}")
             self.auto_var.set(autostart_enabled())
 
-    # ---------- motor olayları ----------
+    # ---------- engine events ----------
     def _start_engine(self):
         try:
             self.engine.start()
         except Exception as e:
-            pf.log(f"[başlatma hatası] {e}")
-            self.events.put(("error", {"text": f"Başlatılamadı: {e}"}))
+            pf.log(f"[startup error] {e}")
+            self.events.put(("error", {"text": f"Couldn't start: {e}"}))
 
     def _poll(self):
         try:
@@ -466,7 +469,7 @@ class App:
             self._set_status("ready")
             self._update_hint()
             if self.hidden_once:
-                self._notify("PromptFlow hazır", f"{self.hotkey_var.get()} tuşunu basılı tutup konuşabilirsin.")
+                self._notify("PromptFlow is ready", f"Hold {self.hotkey_var.get()} and speak.")
         elif kind == "recording":
             self._set_status("recording")
             self._set_tray("recording")
@@ -492,11 +495,11 @@ class App:
         elif kind == "models":
             self.models = data["names"]
             if not self.models:
-                values = ["Ollama bulunamadı"]
+                values = ["Ollama not found"]
             elif pf.AI_MODEL in self.models:
                 values = self.models
             else:
-                values = self.models + [f"{pf.AI_MODEL} (kurulu değil)"]
+                values = self.models + [f"{pf.AI_MODEL} (not installed)"]
                 self.model_var.set(values[-1])
             self.model_menu.configure(values=values)
         elif kind == "ui_show":
@@ -512,14 +515,14 @@ class App:
         self._set_tray("paused" if paused else "idle")
         self._update_hint()
 
-    # ---------- tepsi ve pencere ----------
+    # ---------- tray and window ----------
     def _start_tray(self):
         menu = pystray.Menu(
-            pystray.MenuItem("Göster", lambda: self.events.put(("ui_show", {})), default=True),
-            pystray.MenuItem(lambda item: "Devam et" if self.engine.paused else "Duraklat",
+            pystray.MenuItem("Show", lambda: self.events.put(("ui_show", {})), default=True),
+            pystray.MenuItem(lambda item: "Resume" if self.engine.paused else "Pause",
                              lambda: self.events.put(("ui_pause", {}))),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Çıkış", lambda: self.events.put(("ui_quit", {}))),
+            pystray.MenuItem("Quit", lambda: self.events.put(("ui_quit", {}))),
         )
         self.tray = pystray.Icon("PromptFlow", self.icons["idle"], "PromptFlow", menu)
         threading.Thread(target=self.tray.run, daemon=True).start()
@@ -544,7 +547,7 @@ class App:
         self.root.withdraw()
         if not self.hidden_once:
             self.hidden_once = True
-            self._notify("PromptFlow arka planda çalışıyor", "Saatin yanındaki ikondan tekrar açabilirsin.")
+            self._notify("PromptFlow keeps running in the background", "Open it again from the icon next to the clock.")
 
     def quit(self):
         try:
@@ -553,8 +556,8 @@ class App:
                 self.engine.listener.stop()
         finally:
             self.root.destroy()
-            os._exit(0)  # CUDA ve ses thread'lerini beklemeden kapan
+            os._exit(0)  # exit without waiting for CUDA and audio threads
 
 
 if __name__ == "__main__":
-    App(start_hidden="--gizli" in sys.argv).root.mainloop()
+    App(start_hidden="--hidden" in sys.argv).root.mainloop()

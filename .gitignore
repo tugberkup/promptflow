@@ -1,7 +1,7 @@
-# Kişisel veriler: her kullanıcının kendi bilgisayarında oluşur
-gecmis.txt
-sozluk.txt
-ayarlar.json
+# Personal data: created on each user's own machine
+history.txt
+dictionary.txt
+settings.json
 promptflow.log
 PromptFlow.lnk
 
