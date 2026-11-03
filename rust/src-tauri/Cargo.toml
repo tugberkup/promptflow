@@ -32,10 +32,6 @@ sysinfo = { version = "0.40.1", default-features = false, features = ["system"] 
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 sys-locale = "0.3.2"
-# Parakeet (NVIDIA) through ONNX Runtime: fast on the CPU in 25 European languages
-transcribe-rs = { version = "0.3.12", default-features = false, features = ["onnx"] }
-# ort 2.0.0-rc.13+ changed its API under transcribe-rs 0.3.12; pin what transcribe-rs was released with
-ort = { version = "=2.0.0-rc.12", default-features = false }
 
 [target."cfg(windows)".dependencies]
 whisper-rs = { version = "0.16.0", features = ["vulkan"] }
@@ -44,6 +40,13 @@ windows = { version = "0.62", features = ["Win32_Graphics_Dxgi", "Win32_Graphics
 # Apple Silicon runs Whisper on the GPU with Metal; Intel Macs use the CPU (Metal hangs on some of their AMD GPUs)
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 whisper-rs = { version = "0.16.0", features = ["metal"] }
+
+# Parakeet (NVIDIA) through ONNX Runtime: fast on the CPU in 25 European languages. ONNX Runtime has
+# no prebuilt binaries for Intel Macs, so they only get Whisper.
+[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+transcribe-rs = { version = "0.3.12", default-features = false, features = ["onnx"] }
+# ort 2.0.0-rc.13+ changed its API under transcribe-rs 0.3.12; pin what transcribe-rs was released with
+ort = { version = "=2.0.0-rc.12", default-features = false }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
 whisper-rs = { version = "0.16.0" }

@@ -5,7 +5,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams};
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 use transcribe_rs::onnx::Quantization;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -14,6 +16,7 @@ use crate::text::is_hallucination;
 
 pub enum Stt {
     Whisper(Whisper),
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
     Parakeet(Parakeet),
 }
 
@@ -23,7 +26,10 @@ impl Stt {
     pub fn load(engine: Engine, model: &Path, vad_model: Option<&Path>, accelerated: bool) -> Result<Self> {
         Ok(match engine {
             Engine::Whisper => Self::Whisper(Whisper::load_on(model, vad_model, true, !accelerated)?),
+            #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
             Engine::Parakeet => Self::Parakeet(Parakeet::load(model)?),
+            #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+            Engine::Parakeet => anyhow::bail!("Parakeet isn't available on Intel Macs"),
         })
     }
 
@@ -35,6 +41,7 @@ impl Stt {
         let (text, lang) = match self {
             Self::Whisper(w) => w.run(audio, language, prompt, true)?,
             // Parakeet doesn't report the language or take a prompt; the dictionary still applies afterwards
+            #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
             Self::Parakeet(p) => (p.run(audio)?, language.unwrap_or_default().to_string()),
         };
         if is_hallucination(&text) {
@@ -44,10 +51,12 @@ impl Stt {
     }
 }
 
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 pub struct Parakeet {
     model: Mutex<ParakeetModel>,
 }
 
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 impl Parakeet {
     /// `dir` holds the int8 encoder and decoder, nemo128.onnx and vocab.txt.
     fn load(dir: &Path) -> Result<Self> {
@@ -155,10 +164,13 @@ mod tests {
                 println!("{:32} {device:10} {took:7.2}s  RTF {:6.2}  {short}", model.file, seconds / took);
             };
             match model.engine {
+                #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
                 Engine::Parakeet => {
                     let p = Parakeet::load(&path).unwrap();
                     time("cpu", &|| p.run(&audio).unwrap());
                 }
+                #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+                Engine::Parakeet => {}
                 Engine::Whisper => {
                     for (gpu, greedy, device) in [(true, false, "gpu"), (false, false, "cpu beam"), (false, true, "cpu greedy")] {
                         let w = Whisper::load_on(&path, None, gpu, greedy).unwrap();

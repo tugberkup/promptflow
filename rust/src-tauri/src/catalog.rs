@@ -99,6 +99,7 @@ pub const MODELS: &[Model] = &[
     whisper!("small-en", "Whisper Small (English)", "ggml-small.en-q5_1.bin", 190098681,
         "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30", "small", true),
     // Runs on the CPU: about ten times faster than Turbo there, in 25 European languages
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
     Model {
         id: "parakeet-v3",
         name: "Parakeet v3",
