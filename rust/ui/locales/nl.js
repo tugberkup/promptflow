@@ -87,6 +87,7 @@ PF_LOCALES.nl = {
   "model.medium": "Nauwkeurig in veel talen; een middenweg qua grootte.",
   "model.small": "Klein en snel, ook zonder GPU. Maakt meer fouten buiten de grote talen.",
   "model.small-en": "Alleen Engels. Snel zonder GPU.",
+  "model.parakeet-v3": "Zeer snel, ook zonder GPU, en bijna zo nauwkeurig als Turbo in 25 Europese talen.",
 
   "ai.title": "AI-opschoning (modi Schoon en Prompt)",
   "ai.raw_better": "Deze computer werkt beter in de modus Ruw: een AI-model zou elk dictaat traag maken.",
@@ -144,7 +145,7 @@ PF_LOCALES.nl = {
   "about.setup_again": "Installatiegids",
   "about.open": "Openen",
   "about.start": "Starten",
-  "about.credits": "Spraakherkenning door whisper.cpp. Nauwkeurigheidscijfers uit de modelbenchmarks van Handy (MIT).",
+  "about.credits": "Spraakherkenning door whisper.cpp en NVIDIA's Parakeet (CC-BY-4.0). Nauwkeurigheidscijfers uit de modeltests van Handy (MIT).",
 
   "onboarding.continue": "Doorgaan",
   "onboarding.back": "Terug",

@@ -186,7 +186,9 @@ impl Engine {
         self.log(format!("Loading model: {file}"));
         let t = Instant::now();
         let accelerated = crate::hardware::detect().gpu_kind != crate::hardware::GpuKind::None;
-        match Stt::load(&path, vad.exists().then_some(vad.as_path()), accelerated) {
+        // A file that isn't in the catalog is a Whisper model the user put there themselves
+        let kind = crate::catalog::find(&file).map_or(crate::catalog::Engine::Whisper, |m| m.engine);
+        match Stt::load(kind, &path, vad.exists().then_some(vad.as_path()), accelerated) {
             Ok(stt) => {
                 *self.stt.lock().unwrap() = Some(Arc::new(stt));
                 self.log(format!("Ready in {:.1}s. Hold '{}', speak, release.", t.elapsed().as_secs_f32(), self.settings().hotkey));

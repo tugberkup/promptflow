@@ -11,7 +11,7 @@ dictation engine in Rust (`src-tauri/`). It replaces the Python app at the repos
 | `src-tauri/src/engine.rs` | Hotkey → recording → Whisper → dictionary → AI cleanup → paste → history |
 | `src-tauri/src/hotkey.rs` | Hold-to-talk on a single key (Right Ctrl / Right Command / F-keys) via [handy-keys](https://github.com/handy-computer/handy-keys) |
 | `src-tauri/src/audio.rs` | Microphone recording with cpal, resampled to 16 kHz mono |
-| `src-tauri/src/stt.rs` | whisper.cpp through [whisper-rs](https://codeberg.org/tazz4843/whisper-rs): Vulkan on Windows, Metal on Apple Silicon, CPU on Intel Macs; Silero VAD |
+| `src-tauri/src/stt.rs` | whisper.cpp through [whisper-rs](https://codeberg.org/tazz4843/whisper-rs) (Vulkan on Windows, Metal on Apple Silicon, CPU on Intel Macs; Silero VAD), and NVIDIA Parakeet through [transcribe-rs](https://github.com/cjpais/transcribe-rs) / ONNX Runtime on the CPU |
 | `src-tauri/src/catalog.rs` | Model catalog, recommendations for this machine, resumable downloads with SHA256 checks |
 | `src-tauri/src/hardware.rs` | GPU name and video memory (DXGI on Windows), RAM, Apple Silicon |
 | `src-tauri/src/ai.rs` | Optional cleanup through a local [Ollama](https://ollama.com) model (same prompts as 1.x) |
@@ -54,6 +54,9 @@ cargo test                 # unit tests
 cargo tauri build          # installers in <target>/release/bundle
 ```
 
+On Windows, run `bash ../scripts/windows-runtime-dlls.sh` before `cargo tauri build`: the installer ships the
+Visual C++ runtime, DirectML and the Vulkan loader next to `promptflow.exe` so it starts on a fresh Windows too.
+
 ## Development helpers
 
 | Variable | Effect |
@@ -61,3 +64,4 @@ cargo tauri build          # installers in <target>/release/bundle
 | `PROMPTFLOW_MODELS` | Use this folder for models instead of the app data folder (share downloads between builds) |
 | `PROMPTFLOW_TEST_WAV` | Use this 16-bit WAV file instead of the microphone, for automated end-to-end tests |
 | `PROMPTFLOW_IMPORT_FROM` | Import 1.x data from this folder on first start |
+| `PROMPTFLOW_BENCH_WAV` | `cargo test --release bench -- --ignored --nocapture` times every model in `PROMPTFLOW_MODELS` on this WAV, on the GPU and the CPU (`PROMPTFLOW_BENCH_ONLY=turbo,parakeet-v3` picks some) |

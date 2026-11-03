@@ -87,6 +87,7 @@ PF_LOCALES.tr = {
   "model.medium": "Birçok dilde doğru; boyut olarak orta yol.",
   "model.small": "Küçük ve hızlı, GPU olmadan bile. Büyük diller dışında daha çok hata yapar.",
   "model.small-en": "Yalnızca İngilizce. GPU olmadan hızlı.",
+  "model.parakeet-v3": "Ekran kartı olmadan da çok hızlı; 25 Avrupa dilinde neredeyse Turbo kadar doğru.",
 
   "ai.title": "AI temizliği (Temiz ve Prompt modları)",
   "ai.raw_better": "Bu bilgisayar Ham modda daha iyi çalışır: bir AI modeli her dikteyi yavaşlatır.",
@@ -144,7 +145,7 @@ PF_LOCALES.tr = {
   "about.setup_again": "Kurulum rehberi",
   "about.open": "Aç",
   "about.start": "Başlat",
-  "about.credits": "Konuşma tanıma whisper.cpp ile. Doğruluk rakamları Handy'nin model karşılaştırmalarından (MIT).",
+  "about.credits": "Konuşma tanıma: whisper.cpp ve NVIDIA'nın Parakeet modeli (CC-BY-4.0). Doğruluk verileri Handy'nin model testlerinden (MIT).",
 
   "onboarding.continue": "Devam",
   "onboarding.back": "Geri",

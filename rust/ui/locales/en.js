@@ -88,6 +88,7 @@ PF_LOCALES.en = {
   "model.medium": "Accurate in many languages; a middle ground in size.",
   "model.small": "Small and quick, even without a GPU. Makes more mistakes outside major languages.",
   "model.small-en": "English only. Quick without a GPU.",
+  "model.parakeet-v3": "Very fast even without a GPU, and about as accurate as Turbo in 25 European languages.",
 
   "ai.title": "AI cleanup (Clean and Prompt modes)",
   "ai.raw_better": "This computer is better off in Raw mode: an AI model would make every dictation slow.",
@@ -145,7 +146,7 @@ PF_LOCALES.en = {
   "about.setup_again": "Setup guide",
   "about.open": "Open",
   "about.start": "Start",
-  "about.credits": "Speech recognition by whisper.cpp. Accuracy figures from Handy's model benchmarks (MIT).",
+  "about.credits": "Speech recognition by whisper.cpp and NVIDIA's Parakeet (CC-BY-4.0). Accuracy figures from Handy's model benchmarks (MIT).",
 
   "onboarding.continue": "Continue",
   "onboarding.back": "Back",

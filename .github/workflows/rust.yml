@@ -117,6 +117,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Runtime DLLs for the installer (Windows)
+        if: runner.os == 'Windows'
+        run: bash ../scripts/windows-runtime-dlls.sh
+
       - name: Build installers
         run: cargo tauri build
 
@@ -128,7 +132,6 @@ jobs:
           mkdir -p "$out"
           if [ "$RUNNER_OS" = "Windows" ]; then
             cp "$bundle"/nsis/*.exe "$out"/
-            cp "$bundle"/msi/*.msi "$out"/
           else
             cp "$bundle"/dmg/*.dmg "$out"/
             # Zip the .app with ditto so permissions and signatures survive upload.

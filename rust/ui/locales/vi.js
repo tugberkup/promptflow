@@ -87,6 +87,7 @@ PF_LOCALES.vi = {
   "model.medium": "Chính xác với nhiều ngôn ngữ; kích thước ở mức vừa.",
   "model.small": "Nhỏ và nhanh, kể cả khi không có GPU. Hay sai hơn với các ngôn ngữ ít phổ biến.",
   "model.small-en": "Chỉ tiếng Anh. Nhanh khi không có GPU.",
+  "model.parakeet-v3": "Rất nhanh kể cả khi không có GPU, và gần chính xác như Turbo với 25 ngôn ngữ châu Âu.",
 
   "ai.title": "Làm sạch bằng AI (chế độ Sạch và Prompt)",
   "ai.raw_better": "Máy này hợp với chế độ Gốc hơn: mô hình AI sẽ làm mỗi lần đọc chậm đi.",
@@ -144,7 +145,7 @@ PF_LOCALES.vi = {
   "about.setup_again": "Hướng dẫn thiết lập",
   "about.open": "Mở",
   "about.start": "Bắt đầu",
-  "about.credits": "Nhận dạng giọng nói bởi whisper.cpp. Số liệu độ chính xác từ bộ đánh giá mô hình của Handy (MIT).",
+  "about.credits": "Nhận dạng giọng nói bằng whisper.cpp và Parakeet của NVIDIA (CC-BY-4.0). Số liệu độ chính xác từ bài đánh giá mô hình của Handy (MIT).",
 
   "onboarding.continue": "Tiếp tục",
   "onboarding.back": "Quay lại",

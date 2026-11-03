@@ -87,6 +87,7 @@ PF_LOCALES.ja = {
   "model.medium": "多くの言語で高精度。サイズは中間です。",
   "model.small": "小さくて速く、GPUなしでも動きます。主要言語以外では間違いが増えます。",
   "model.small-en": "英語のみ。GPUなしでも高速です。",
+  "model.parakeet-v3": "GPUがなくてもとても速く、ヨーロッパの25言語でTurboとほぼ同じ精度です。",
 
   "ai.title": "AIクリーンアップ（クリーン・プロンプトモード）",
   "ai.raw_better": "このコンピュータには「そのまま」モードがおすすめです。AIモデルを使うと音声入力のたびに遅くなります。",
@@ -144,7 +145,7 @@ PF_LOCALES.ja = {
   "about.setup_again": "セットアップガイド",
   "about.open": "開く",
   "about.start": "開始",
-  "about.credits": "音声認識はwhisper.cppによるものです。精度の数値はHandyのモデルベンチマーク（MIT）によります。",
+  "about.credits": "音声認識: whisper.cpp と NVIDIA の Parakeet (CC-BY-4.0)。精度の数値は Handy のモデル評価 (MIT) によるものです。",
 
   "onboarding.continue": "続ける",
   "onboarding.back": "戻る",

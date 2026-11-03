@@ -15,46 +15,126 @@ use sha2::{Digest, Sha256};
 
 use crate::hardware::{GpuKind, Hardware};
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Engine {
+    Whisper,
+    Parakeet,
+}
+
+/// One downloaded file of a model
+#[derive(Clone, Copy, Debug)]
+pub struct Part {
+    pub name: &'static str,
+    pub url: &'static str,
+    pub size: u64,
+    pub sha256: &'static str,
+}
+
 #[derive(Serialize, Clone, Copy, Debug)]
 pub struct Model {
     pub id: &'static str,
     pub name: &'static str,
+    /// Its name in the models folder, and what the SPEECH_MODEL setting holds: the file itself for a
+    /// one-file model, a folder holding the parts otherwise
     pub file: &'static str,
-    pub url: &'static str,
+    pub engine: Engine,
+    #[serde(skip)]
+    pub parts: &'static [Part],
+    /// Total download size in bytes
     pub size: u64,
-    pub sha256: &'static str,
     /// Which entry of benchmarks.json describes it
     pub benchmark: &'static str,
     pub english_only: bool,
+    pub language_count: u16,
 }
 
-macro_rules! model {
+impl Model {
+    fn single_file(&self) -> bool {
+        matches!(self.parts, [part] if part.name == self.file)
+    }
+}
+
+macro_rules! whisper {
     ($id:literal, $name:literal, $file:literal, $size:literal, $sha:literal, $bench:literal, $en:literal) => {
         Model {
             id: $id,
             name: $name,
             file: $file,
-            url: concat!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/", $file),
+            engine: Engine::Whisper,
+            parts: &[Part {
+                name: $file,
+                url: concat!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/", $file),
+                size: $size,
+                sha256: $sha,
+            }],
             size: $size,
-            sha256: $sha,
             benchmark: $bench,
             english_only: $en,
+            language_count: if $en { 1 } else { 99 },
         }
     };
 }
 
+/// A pinned revision of the ONNX export of NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0)
+macro_rules! parakeet_v3 {
+    ($file:literal) => {
+        concat!(
+            "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/",
+            $file
+        )
+    };
+}
+
 pub const MODELS: &[Model] = &[
-    model!("turbo", "Whisper Large v3 Turbo", "ggml-large-v3-turbo-q5_0.bin", 574041195,
+    whisper!("turbo", "Whisper Large v3 Turbo", "ggml-large-v3-turbo-q5_0.bin", 574041195,
         "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", "turbo", false),
-    model!("large-v3", "Whisper Large v3", "ggml-large-v3-q5_0.bin", 1081140203,
+    whisper!("large-v3", "Whisper Large v3", "ggml-large-v3-q5_0.bin", 1081140203,
         "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1", "large-v3", false),
-    model!("medium", "Whisper Medium", "ggml-medium-q5_0.bin", 539212467,
+    whisper!("medium", "Whisper Medium", "ggml-medium-q5_0.bin", 539212467,
         "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f", "medium", false),
-    model!("small", "Whisper Small", "ggml-small-q5_1.bin", 190085487,
+    whisper!("small", "Whisper Small", "ggml-small-q5_1.bin", 190085487,
         "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", "small", false),
     // English-only Small: at least as accurate as Small in English (benchmarked as Small, a cautious estimate)
-    model!("small-en", "Whisper Small (English)", "ggml-small.en-q5_1.bin", 190098681,
+    whisper!("small-en", "Whisper Small (English)", "ggml-small.en-q5_1.bin", 190098681,
         "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30", "small", true),
+    // Runs on the CPU: about ten times faster than Turbo there, in 25 European languages
+    Model {
+        id: "parakeet-v3",
+        name: "Parakeet v3",
+        file: "parakeet-tdt-0.6b-v3-int8",
+        engine: Engine::Parakeet,
+        parts: &[
+            Part {
+                name: "encoder-model.int8.onnx",
+                url: parakeet_v3!("encoder-model.int8.onnx"),
+                size: 652183999,
+                sha256: "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09",
+            },
+            Part {
+                name: "decoder_joint-model.int8.onnx",
+                url: parakeet_v3!("decoder_joint-model.int8.onnx"),
+                size: 18202004,
+                sha256: "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70",
+            },
+            Part {
+                name: "nemo128.onnx",
+                url: parakeet_v3!("nemo128.onnx"),
+                size: 139764,
+                sha256: "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f",
+            },
+            Part {
+                name: "vocab.txt",
+                url: parakeet_v3!("vocab.txt"),
+                size: 93939,
+                sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+            },
+        ],
+        size: 652183999 + 18202004 + 139764 + 93939,
+        benchmark: "parakeet-v3",
+        english_only: false,
+        language_count: 25,
+    },
 ];
 
 /// Silero VAD for whisper.cpp: cuts silence away before transcribing. Downloaded with the first model.
@@ -62,11 +142,17 @@ pub const VAD: Model = Model {
     id: "vad",
     name: "Silero VAD",
     file: "ggml-silero-v5.1.2.bin",
-    url: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin",
+    engine: Engine::Whisper,
+    parts: &[Part {
+        name: "ggml-silero-v5.1.2.bin",
+        url: "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin",
+        size: 885098,
+        sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+    }],
     size: 885098,
-    sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
     benchmark: "",
     english_only: false,
+    language_count: 0,
 };
 
 pub fn find(id: &str) -> Option<Model> {
@@ -119,6 +205,8 @@ pub fn estimated_wait(model: &Model, hw: &Hardware) -> f32 {
     // Our own measurement on a discrete GPU, or the integrated-GPU number scaled up
     let gpu = speed.gpu.unwrap_or(speed.accelerated * 4.5);
     let rtf = match hw.gpu_kind {
+        // PromptFlow runs Parakeet with ONNX Runtime on the CPU everywhere
+        _ if model.engine == Engine::Parakeet => cpu,
         GpuKind::Discrete if hw.vram_gb >= 8.0 => gpu,
         GpuKind::Discrete => gpu * 0.6,
         GpuKind::Apple if hw.ram_gb >= 32.0 => gpu * 0.8, // usually a Pro / Max chip
@@ -143,7 +231,7 @@ pub fn error_rate(model: &Model, languages: &[String]) -> Option<f32> {
 pub fn fits(model: &Model, hw: &Hardware) -> bool {
     let gb = model.size as f32 / 1_073_741_824.0;
     match hw.gpu_kind {
-        GpuKind::Discrete => gb * 1.5 < hw.vram_gb,
+        GpuKind::Discrete if model.engine == Engine::Whisper => gb * 1.5 < hw.vram_gb,
         _ => gb * 2.5 < hw.ram_gb,
     }
 }
@@ -223,7 +311,8 @@ pub fn recommend(hw: &Hardware, languages: &[String]) -> Recommendation {
     Recommendation { recommended: recommended.map(|e| e.id), faster, more_accurate, estimates, ai_model }
 }
 
-/// Downloads a model into `dir`, resuming a partial download, and checks its SHA256.
+/// Downloads a model into `dir`, resuming a partial download, and checks every file's SHA256.
+/// A model of several files appears in its folder only once all of them are there.
 /// `progress(done, total)` is called about ten times a second.
 pub fn download(model: &Model, dir: &Path, cancel: &AtomicBool, progress: &dyn Fn(u64, u64)) -> Result<()> {
     fs::create_dir_all(dir)?;
@@ -231,10 +320,28 @@ pub fn download(model: &Model, dir: &Path, cancel: &AtomicBool, progress: &dyn F
     if target.exists() {
         return Ok(());
     }
-    let part = dir.join(format!("{}.part", model.file));
-    let mut have = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-    if have > model.size {
-        fs::remove_file(&part)?;
+    if model.single_file() {
+        return download_part(&model.parts[0], &target, cancel, &|done| progress(done, model.size));
+    }
+    let staging = dir.join(format!("{}.part", model.file));
+    fs::create_dir_all(&staging)?;
+    let mut finished = 0;
+    for part in model.parts {
+        download_part(part, &staging.join(part.name), cancel, &|done| progress(finished + done, model.size))?;
+        finished += part.size;
+    }
+    fs::rename(&staging, &target)?;
+    Ok(())
+}
+
+fn download_part(part: &Part, target: &Path, cancel: &AtomicBool, progress: &dyn Fn(u64)) -> Result<()> {
+    if target.exists() {
+        return Ok(());
+    }
+    let partial = target.with_file_name(format!("{}.part", part.name));
+    let mut have = fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
+    if have > part.size {
+        fs::remove_file(&partial)?;
         have = 0;
     }
 
@@ -242,16 +349,16 @@ pub fn download(model: &Model, dir: &Path, cancel: &AtomicBool, progress: &dyn F
         .timeout_connect(Some(Duration::from_secs(15)))
         .build()
         .into();
-    let mut request = agent.get(model.url);
+    let mut request = agent.get(part.url);
     if have > 0 {
         request = request.header("Range", format!("bytes={have}-"));
     }
     let response = request.call()?;
     let mut file = if response.status() == 206 {
-        OpenOptions::new().append(true).open(&part)?
+        OpenOptions::new().append(true).open(&partial)?
     } else {
         have = 0; // the server ignored the range: start over
-        File::create(&part)?
+        File::create(&partial)?
     };
 
     let mut reader = response.into_body().into_reader();
@@ -268,20 +375,20 @@ pub fn download(model: &Model, dir: &Path, cancel: &AtomicBool, progress: &dyn F
         file.write_all(&buf[..n])?;
         have += n as u64;
         if last.elapsed() >= Duration::from_millis(100) {
-            progress(have, model.size);
+            progress(have);
             last = Instant::now();
         }
     }
     file.flush()?;
     drop(file);
-    progress(have, model.size);
+    progress(have);
 
-    let hash = sha256_file(&part)?;
-    if hash != model.sha256 {
-        fs::remove_file(&part)?;
+    let hash = sha256_file(&partial)?;
+    if hash != part.sha256 {
+        fs::remove_file(&partial)?;
         return Err(anyhow!("the download was corrupted (checksum mismatch), please try again"));
     }
-    fs::rename(&part, &target)?;
+    fs::rename(&partial, target)?;
     Ok(())
 }
 
@@ -346,7 +453,11 @@ mod tests {
     #[test]
     fn every_model_has_benchmarks() {
         for m in MODELS {
-            assert!(m.url.ends_with(m.file) && m.sha256.len() == 64, "{}", m.id);
+            assert!(!m.parts.is_empty(), "{}", m.id);
+            for part in m.parts {
+                assert!(part.url.ends_with(part.name) && part.sha256.len() == 64, "{} {}", m.id, part.name);
+            }
+            assert_eq!(m.size, m.parts.iter().map(|p| p.size).sum::<u64>(), "{}", m.id);
             assert!(benchmarks().models.contains_key(m.benchmark), "{}", m.id);
         }
     }
@@ -386,5 +497,37 @@ mod tests {
     fn big_models_need_memory() {
         let tiny = hw(GpuKind::None, 0.0, 2.0, 2);
         assert!(!fits(&MODELS[1], &tiny)); // Large v3 on 2 GB of RAM
+    }
+}
+
+#[cfg(test)]
+mod download_check {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn parakeet_download() {
+        let src = std::path::PathBuf::from(std::env::var("PROMPTFLOW_MODELS").unwrap()).join("parakeet-tdt-0.6b-v3-int8");
+        let dir = std::env::temp_dir().join("pf-download-check");
+        let _ = fs::remove_dir_all(&dir);
+        let staging = dir.join("parakeet-tdt-0.6b-v3-int8.part");
+        fs::create_dir_all(&staging).unwrap();
+        let model = find("parakeet-v3").unwrap();
+        // the big files are already there; vocab.txt comes from the network, half of nemo128.onnx resumes
+        for name in ["encoder-model.int8.onnx", "decoder_joint-model.int8.onnx"] {
+            fs::copy(src.join(name), staging.join(name)).unwrap();
+        }
+        let nemo = fs::read(src.join("nemo128.onnx")).unwrap();
+        fs::write(staging.join("nemo128.onnx.part"), &nemo[..nemo.len() / 2]).unwrap();
+        let last = std::sync::Mutex::new(0);
+        download(&model, &dir, &AtomicBool::new(false), &|done, total| {
+            assert!(done <= total);
+            *last.lock().unwrap() = done;
+        })
+        .unwrap();
+        assert!(dir.join(model.file).join("vocab.txt").exists() && !staging.exists());
+        assert_eq!(sha256_file(&dir.join(model.file).join("nemo128.onnx")).unwrap(), model.parts[2].sha256);
+        println!("last progress {} of {}", last.lock().unwrap(), model.size);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -87,6 +87,7 @@ PF_LOCALES.ko = {
   "model.medium": "많은 언어에서 정확하고 크기는 중간이에요.",
   "model.small": "작고 빨라서 GPU 없이도 잘 돼요. 주요 언어 외에는 실수가 더 많아요.",
   "model.small-en": "영어 전용. GPU 없이도 빨라요.",
+  "model.parakeet-v3": "GPU가 없어도 매우 빠르고, 유럽 25개 언어에서 Turbo와 거의 같은 정확도를 보입니다.",
 
   "ai.title": "AI 정리(정리 및 프롬프트 모드)",
   "ai.raw_better": "이 컴퓨터는 원본 모드가 더 잘 맞아요. AI 모델을 쓰면 받아쓰기가 매번 느려져요.",
@@ -144,7 +145,7 @@ PF_LOCALES.ko = {
   "about.setup_again": "설정 가이드",
   "about.open": "열기",
   "about.start": "시작",
-  "about.credits": "음성 인식은 whisper.cpp를 사용해요. 정확도 수치는 Handy의 모델 벤치마크(MIT)를 따랐어요.",
+  "about.credits": "음성 인식: whisper.cpp 및 NVIDIA Parakeet (CC-BY-4.0). 정확도 수치는 Handy의 모델 벤치마크(MIT)에서 가져왔습니다.",
 
   "onboarding.continue": "계속",
   "onboarding.back": "뒤로",

@@ -87,6 +87,7 @@ PF_LOCALES.id = {
   "model.medium": "Akurat di banyak bahasa; ukurannya menengah.",
   "model.small": "Kecil dan cepat, bahkan tanpa GPU. Lebih sering salah di luar bahasa utama.",
   "model.small-en": "Hanya bahasa Inggris. Cepat tanpa GPU.",
+  "model.parakeet-v3": "Sangat cepat bahkan tanpa GPU, dan hampir seakurat Turbo dalam 25 bahasa Eropa.",
 
   "ai.title": "Pembersihan AI (mode Bersih dan Prompt)",
   "ai.raw_better": "Komputer ini lebih cocok dengan mode Mentah: model AI akan membuat setiap dikte lambat.",
@@ -144,7 +145,7 @@ PF_LOCALES.id = {
   "about.setup_again": "Panduan penyiapan",
   "about.open": "Buka",
   "about.start": "Mulai",
-  "about.credits": "Pengenalan suara oleh whisper.cpp. Angka akurasi dari benchmark model Handy (MIT).",
+  "about.credits": "Pengenalan suara oleh whisper.cpp dan Parakeet dari NVIDIA (CC-BY-4.0). Angka akurasi dari benchmark model Handy (MIT).",
 
   "onboarding.continue": "Lanjut",
   "onboarding.back": "Kembali",

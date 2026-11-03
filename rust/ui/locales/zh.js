@@ -87,6 +87,7 @@ PF_LOCALES.zh = {
   "model.medium": "支持多种语言且准确，大小适中。",
   "model.small": "小巧快速，没有 GPU 也能用。主要语言之外错误较多。",
   "model.small-en": "仅限英语。没有 GPU 也很快。",
+  "model.parakeet-v3": "即使没有 GPU 也非常快，在 25 种欧洲语言中准确度接近 Turbo。",
 
   "ai.title": "AI 润色（整理和提示词模式）",
   "ai.raw_better": "这台电脑更适合“原文”模式：AI 模型会让每次听写都变慢。",
@@ -144,7 +145,7 @@ PF_LOCALES.zh = {
   "about.setup_again": "设置向导",
   "about.open": "打开",
   "about.start": "启动",
-  "about.credits": "语音识别基于 whisper.cpp。准确率数据来自 Handy 的模型基准测试（MIT）。",
+  "about.credits": "语音识别：whisper.cpp 和 NVIDIA 的 Parakeet（CC-BY-4.0）。准确率数据来自 Handy 的模型基准测试（MIT）。",
 
   "onboarding.continue": "继续",
   "onboarding.back": "返回",

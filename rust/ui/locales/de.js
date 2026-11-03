@@ -87,6 +87,7 @@ PF_LOCALES.de = {
   "model.medium": "Genau in vielen Sprachen; ein Mittelweg bei der Größe.",
   "model.small": "Klein und schnell, auch ohne GPU. Macht außerhalb großer Sprachen mehr Fehler.",
   "model.small-en": "Nur Englisch. Schnell ohne GPU.",
+  "model.parakeet-v3": "Sehr schnell auch ohne GPU und in 25 europäischen Sprachen fast so genau wie Turbo.",
 
   "ai.title": "KI-Bereinigung (Modi Sauber und Prompt)",
   "ai.raw_better": "Dieser Computer ist im Modus Roh besser aufgehoben: Ein KI-Modell würde jedes Diktat verlangsamen.",
@@ -144,7 +145,7 @@ PF_LOCALES.de = {
   "about.setup_again": "Einrichtungsassistent",
   "about.open": "Öffnen",
   "about.start": "Starten",
-  "about.credits": "Spracherkennung von whisper.cpp. Genauigkeitswerte aus den Modell-Benchmarks von Handy (MIT).",
+  "about.credits": "Spracherkennung mit whisper.cpp und NVIDIAs Parakeet (CC-BY-4.0). Genauigkeitswerte aus den Modelltests von Handy (MIT).",
 
   "onboarding.continue": "Weiter",
   "onboarding.back": "Zurück",

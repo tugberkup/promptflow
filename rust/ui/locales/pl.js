@@ -87,6 +87,7 @@ PF_LOCALES.pl = {
   "model.medium": "Dokładny w wielu językach; złoty środek pod względem rozmiaru.",
   "model.small": "Mały i szybki, nawet bez GPU. Częściej się myli poza głównymi językami.",
   "model.small-en": "Tylko angielski. Szybki bez GPU.",
+  "model.parakeet-v3": "Bardzo szybki nawet bez GPU i prawie tak dokładny jak Turbo w 25 językach europejskich.",
 
   "ai.title": "Czyszczenie przez AI (tryby Czysty i Prompt)",
   "ai.raw_better": "Ten komputer lepiej działa w trybie Surowy: model AI spowalniałby każde dyktowanie.",
@@ -144,7 +145,7 @@ PF_LOCALES.pl = {
   "about.setup_again": "Kreator konfiguracji",
   "about.open": "Otwórz",
   "about.start": "Uruchom",
-  "about.credits": "Rozpoznawanie mowy: whisper.cpp. Dane o dokładności z testów modeli Handy (MIT).",
+  "about.credits": "Rozpoznawanie mowy: whisper.cpp i Parakeet od NVIDIA (CC-BY-4.0). Dane o dokładności z testów modeli Handy (MIT).",
 
   "onboarding.continue": "Dalej",
   "onboarding.back": "Wstecz",

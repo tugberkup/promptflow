@@ -87,6 +87,7 @@ PF_LOCALES.es = {
   "model.medium": "Preciso en muchos idiomas; un punto medio en tamaño.",
   "model.small": "Pequeño y rápido, incluso sin GPU. Se equivoca más fuera de los idiomas principales.",
   "model.small-en": "Solo inglés. Rápido sin GPU.",
+  "model.parakeet-v3": "Muy rápido incluso sin GPU y casi tan preciso como Turbo en 25 idiomas europeos.",
 
   "ai.title": "Limpieza con IA (modos Limpio y Prompt)",
   "ai.raw_better": "Este ordenador rinde mejor en modo Sin IA: un modelo de IA haría lento cada dictado.",
@@ -144,7 +145,7 @@ PF_LOCALES.es = {
   "about.setup_again": "Guía de configuración",
   "about.open": "Abrir",
   "about.start": "Iniciar",
-  "about.credits": "Reconocimiento de voz de whisper.cpp. Cifras de precisión de las pruebas de modelos de Handy (MIT).",
+  "about.credits": "Reconocimiento de voz con whisper.cpp y Parakeet de NVIDIA (CC-BY-4.0). Cifras de precisión de las pruebas de modelos de Handy (MIT).",
 
   "onboarding.continue": "Continuar",
   "onboarding.back": "Atrás",

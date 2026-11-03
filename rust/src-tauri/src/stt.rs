@@ -1,14 +1,70 @@
-//! Speech to text with whisper.cpp: Vulkan GPU on Windows, Metal on Apple Silicon, CPU otherwise.
+//! Speech to text. Whisper through whisper.cpp (Vulkan GPU on Windows, Metal on Apple Silicon, CPU
+//! otherwise) or NVIDIA's Parakeet through ONNX Runtime (CPU, fast in 25 European languages).
 
 use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
+use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams};
+use transcribe_rs::onnx::Quantization;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
+use crate::catalog::Engine;
 use crate::text::is_hallucination;
 
-pub struct Stt {
+pub enum Stt {
+    Whisper(Whisper),
+    Parakeet(Parakeet),
+}
+
+impl Stt {
+    /// Loads a model and runs it once so the first dictation isn't slow. `accelerated` is false on
+    /// machines with no GPU whisper.cpp can use; Parakeet always runs on the CPU.
+    pub fn load(engine: Engine, model: &Path, vad_model: Option<&Path>, accelerated: bool) -> Result<Self> {
+        Ok(match engine {
+            Engine::Whisper => Self::Whisper(Whisper::load_on(model, vad_model, true, !accelerated)?),
+            Engine::Parakeet => Self::Parakeet(Parakeet::load(model)?),
+        })
+    }
+
+    /// Returns (text, detected language code). Empty text when nothing was said.
+    pub fn transcribe(&self, audio: &[f32], language: Option<&str>, prompt: &str) -> Result<(String, String)> {
+        if audio.len() < 1_600 {
+            return Ok((String::new(), String::new()));
+        }
+        let (text, lang) = match self {
+            Self::Whisper(w) => w.run(audio, language, prompt, true)?,
+            // Parakeet doesn't report the language or take a prompt; the dictionary still applies afterwards
+            Self::Parakeet(p) => (p.run(audio)?, language.unwrap_or_default().to_string()),
+        };
+        if is_hallucination(&text) {
+            return Ok((String::new(), lang));
+        }
+        Ok((text, lang))
+    }
+}
+
+pub struct Parakeet {
+    model: Mutex<ParakeetModel>,
+}
+
+impl Parakeet {
+    /// `dir` holds the int8 encoder and decoder, nemo128.onnx and vocab.txt.
+    fn load(dir: &Path) -> Result<Self> {
+        let model = ParakeetModel::load(dir, &Quantization::Int8).map_err(|e| anyhow!("{e}"))?;
+        let parakeet = Self { model: Mutex::new(model) };
+        parakeet.run(&vec![0.0; 16_000])?;
+        Ok(parakeet)
+    }
+
+    fn run(&self, audio: &[f32]) -> Result<String> {
+        let mut model = self.model.lock().unwrap();
+        let result = model.transcribe_with(audio, &ParakeetParams::default()).map_err(|e| anyhow!("{e}"))?;
+        Ok(result.text.trim().to_string())
+    }
+}
+
+pub struct Whisper {
     // The state borrows nothing from the context in whisper-rs 0.16, but keep the context alive with it
     _ctx: WhisperContext,
     state: Mutex<WhisperState>,
@@ -17,13 +73,7 @@ pub struct Stt {
     greedy: bool,
 }
 
-impl Stt {
-    /// Loads the model and runs it once so the first dictation isn't slow. `accelerated` is false
-    /// on machines with no GPU whisper.cpp can use.
-    pub fn load(model: &Path, vad_model: Option<&Path>, accelerated: bool) -> Result<Self> {
-        Self::load_on(model, vad_model, true, !accelerated)
-    }
-
+impl Whisper {
     fn load_on(model: &Path, vad_model: Option<&Path>, gpu: bool, greedy: bool) -> Result<Self> {
         let path = model.to_str().ok_or_else(|| anyhow!("model path is not valid UTF-8"))?;
         let mut params = WhisperContextParameters::default();
@@ -76,18 +126,6 @@ impl Stt {
         let lang = whisper_rs::get_lang_str(state.full_lang_id_from_state()).unwrap_or("").to_string();
         Ok((text.join(" "), lang))
     }
-
-    /// Returns (text, detected language code). Empty text when nothing was said.
-    pub fn transcribe(&self, audio: &[f32], language: Option<&str>, prompt: &str) -> Result<(String, String)> {
-        if audio.len() < 1_600 {
-            return Ok((String::new(), String::new()));
-        }
-        let (text, lang) = self.run(audio, language, prompt, true)?;
-        if is_hallucination(&text) {
-            return Ok((String::new(), lang));
-        }
-        Ok((text, lang))
-    }
 }
 
 #[cfg(test)]
@@ -109,18 +147,24 @@ mod tests {
             if !path.exists() || (!only.is_empty() && !only.split(',').any(|o| o == model.id)) {
                 continue;
             }
-            for (gpu, greedy) in [(true, false), (false, false), (false, true)] {
-                let stt = Stt::load_on(&path, None, gpu, greedy).unwrap();
+            let time = |device: &str, run: &dyn Fn() -> String| {
                 let start = std::time::Instant::now();
-                let (text, _) = stt.run(&audio, Some("en"), "", false).unwrap();
+                let text = run();
                 let took = start.elapsed().as_secs_f64();
-                let device = match (gpu, greedy) {
-                    (true, _) => "gpu",
-                    (false, false) => "cpu beam",
-                    (false, true) => "cpu greedy",
-                };
                 let short: String = text.chars().take(90).collect();
                 println!("{:32} {device:10} {took:7.2}s  RTF {:6.2}  {short}", model.file, seconds / took);
+            };
+            match model.engine {
+                Engine::Parakeet => {
+                    let p = Parakeet::load(&path).unwrap();
+                    time("cpu", &|| p.run(&audio).unwrap());
+                }
+                Engine::Whisper => {
+                    for (gpu, greedy, device) in [(true, false, "gpu"), (false, false, "cpu beam"), (false, true, "cpu greedy")] {
+                        let w = Whisper::load_on(&path, None, gpu, greedy).unwrap();
+                        time(device, &|| w.run(&audio, Some("en"), "", false).unwrap().0);
+                    }
+                }
             }
         }
     }

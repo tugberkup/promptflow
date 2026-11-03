@@ -184,7 +184,7 @@ function modelCard(m, tag) {
   if (!est.fits) stats.append(el("span", "warn", t("catalog.too_big")));
   else stats.append(el("span", est.wait > 3 ? "warn" : "", t("catalog.wait", { wait: fmtNum(est.wait) })));
   card.append(stats);
-  const meta = [fmtSize(m.size), m.english_only ? t("catalog.english_only") : t("catalog.languages_count", { count: 99 })];
+  const meta = [fmtSize(m.size), m.english_only ? t("catalog.english_only") : t("catalog.languages_count", { count: m.language_count })];
   card.append(el("div", "meta", meta.join(" · ")));
 
   const actions = el("div", "actions");
