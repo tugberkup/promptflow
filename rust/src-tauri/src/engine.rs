@@ -185,7 +185,8 @@ impl Engine {
         self.emit("status", "Loading model…");
         self.log(format!("Loading model: {file}"));
         let t = Instant::now();
-        match Stt::load(&path, vad.exists().then_some(vad.as_path())) {
+        let accelerated = crate::hardware::detect().gpu_kind != crate::hardware::GpuKind::None;
+        match Stt::load(&path, vad.exists().then_some(vad.as_path()), accelerated) {
             Ok(stt) => {
                 *self.stt.lock().unwrap() = Some(Arc::new(stt));
                 self.log(format!("Ready in {:.1}s. Hold '{}', speak, release.", t.elapsed().as_secs_f32(), self.settings().hotkey));

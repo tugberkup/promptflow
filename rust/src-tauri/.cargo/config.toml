@@ -3,3 +3,8 @@
 # ("native" would put e.g. the CI server's AVX-512 into the installer and crash most PCs;
 # Apple's clang also rejects -mcpu=native when building installers)
 GGML_NATIVE = "OFF"
+# With the Visual Studio generator the cmake crate replaces CMAKE_C_FLAGS_RELEASE with flags that
+# have no /O2 (and drops any /O flag passed in CFLAGS), so whisper.cpp's CPU code was built
+# unoptimized: about 20x slower without a GPU. With Ninja it leaves CMake's Release flags alone.
+# Windows only; ninja.exe has to be on PATH (Visual Studio's CMake tools include one).
+CMAKE_GENERATOR_x86_64_pc_windows_msvc = "Ninja"

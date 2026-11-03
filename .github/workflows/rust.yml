@@ -90,6 +90,10 @@ jobs:
             exit 1
           fi
           echo "LIBCLANG_PATH=$LLVM_BIN" >> "$GITHUB_ENV"
+          # whisper.cpp is built with Ninja (see .cargo/config.toml): with the Visual Studio generator
+          # it ends up unoptimized
+          command -v ninja || choco install ninja --no-progress -y
+          ninja --version
           echo "VULKAN_SDK=${VULKAN_SDK:-<unset>}"
           cmake --version
 

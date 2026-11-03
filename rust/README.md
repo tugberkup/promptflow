@@ -35,6 +35,9 @@ User data lives in the app data folder (`%APPDATA%\io.github.tugberkup.promptflo
   winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
   ```
 - Set `LIBCLANG_PATH=C:\Program Files\LLVM\bin`.
+- Put [Ninja](https://ninja-build.org) on `PATH` (the Build Tools' C++ CMake tools include one under
+  `Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja`, or `winget install Ninja-build.Ninja`). whisper.cpp is built
+  with it because the Visual Studio generator leaves its CPU code unoptimized, about 20 times slower without a GPU.
 - whisper.cpp's build fails on long paths ("No CMAKE_C_COMPILER could be found"), so point the build output at a
   short folder, e.g. `CARGO_TARGET_DIR=C:\pf-target`. This also keeps gigabytes of build files out of synced
   folders such as OneDrive.
