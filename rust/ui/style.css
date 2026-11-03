@@ -100,11 +100,13 @@ main { overflow-y: auto; overflow-x: hidden; min-width: 0; padding: 26px 30px 30
 .row .label { display: flex; flex-direction: column; }
 .row .label .small { color: var(--muted); }
 
-select, input[type="text"], input[type="search"], textarea {
+select, input[type="text"], input[type="search"], input[type="password"], textarea {
   background: var(--field); border: 1px solid var(--line-strong); border-radius: 7px; padding: 5px 10px;
 }
 select { min-width: 0; width: 240px; max-width: 45%; cursor: pointer; }
-input[type="text"], input[type="search"] { outline: none; }
+input[type="text"], input[type="search"], input[type="password"] { outline: none; }
+/* the page itself isn't selectable, but what you type is (and can be pasted and copied) */
+input, textarea { user-select: text; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; }
 
 .btn {

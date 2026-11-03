@@ -370,7 +370,9 @@ async function renderCloudAi(provider) {
     }
   };
   save.onclick = submit;
-  input.onkeydown = (e) => e.key === "Enter" && submit();
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submit();
+  });
   actions.append(input, save, get);
 }
 
