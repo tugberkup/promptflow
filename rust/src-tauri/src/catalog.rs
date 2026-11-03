@@ -17,6 +17,8 @@ use crate::hardware::{GpuKind, Hardware};
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
+// Intel Macs have no Parakeet models
+#[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), allow(dead_code))]
 pub enum Engine {
     Whisper,
     Parakeet,
@@ -77,6 +79,7 @@ macro_rules! whisper {
 }
 
 /// A pinned revision of the ONNX export of NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0)
+#[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), allow(unused_macros))]
 macro_rules! parakeet_v3 {
     ($file:literal) => {
         concat!(
