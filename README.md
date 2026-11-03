@@ -9,11 +9,11 @@ No audio ever leaves your computer, there's no subscription, and once it's set u
 
 <p align="center"><img src="docs/screenshot.png" width="420" alt="PromptFlow window"></p>
 
-> **New: PromptFlow 2.0 beta, rewritten in Rust.** No Python needed: download the installer
-> (Windows `.exe`, macOS `.dmg`, under 10 MB) from [Releases](https://github.com/tugberkup/promptflow/releases),
-> open it, and pick a speech model in the built-in catalog; it recommends one for your computer.
-> It's faster too (about 0.4 s from releasing the key to the text on an RTX 4060 Ti) and brings over your
-> 1.x history, dictionary and settings. Source and build notes are in [`rust/`](rust/).
+> **New: [PromptFlow 2.0 beta](https://github.com/tugberkup/promptflow/releases/tag/v2.0.0-beta.1), rewritten in Rust.**
+> No Python needed: download the installer (Windows `.exe`, macOS `.dmg`), open it, and a short setup guide
+> recommends a speech model for your computer and languages. It runs Whisper on the GPU (about 0.4 s for 10 s of
+> speech on an RTX 4060 Ti) or NVIDIA's Parakeet, fast even without a GPU, comes in 16 interface languages and
+> brings over your 1.x history, dictionary and settings. Source and build notes are in [`rust/`](rust/).
 > The instructions below are for 1.x, the Python version.
 
 > **macOS support is in beta.** It's built and tested automatically on Apple Silicon and Intel Macs, but it has had
