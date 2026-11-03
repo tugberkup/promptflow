@@ -3,6 +3,7 @@
 mod ai;
 mod audio;
 mod catalog;
+mod cloud;
 mod engine;
 mod hardware;
 mod hotkey;
@@ -144,6 +145,64 @@ fn get_state(app: AppHandle, engine: State<'_, Arc<Engine>>) -> WindowState {
     }
 }
 
+#[derive(Serialize)]
+struct CloudState {
+    has_key: bool,
+    /// Text models this key can use, best default first; empty without a key or when the provider can't be reached
+    models: Vec<String>,
+    model: Option<String>,
+    error: Option<String>,
+}
+
+/// What the AI page shows for a cloud provider.
+#[tauri::command]
+async fn cloud_state(engine: State<'_, Arc<Engine>>, provider: String) -> Result<CloudState, String> {
+    let provider = cloud::Provider::from_id(&provider).ok_or("unknown provider")?;
+    let model = engine.settings().cloud_model;
+    let Some(key) = cloud::key(provider) else {
+        return Ok(CloudState { has_key: false, models: Vec::new(), model, error: None });
+    };
+    let listed = tauri::async_runtime::spawn_blocking(move || cloud::models(provider, &key)).await.map_err(|e| e.to_string())?;
+    Ok(match listed {
+        Ok(models) => CloudState { has_key: true, models, model, error: None },
+        Err(e) => CloudState { has_key: true, models: Vec::new(), model, error: Some(e.to_string()) },
+    })
+}
+
+/// Checks the key with the provider, then keeps it in the OS keychain and picks the fast default model.
+#[tauri::command]
+async fn save_api_key(engine: State<'_, Arc<Engine>>, provider: String, key: String) -> Result<(), String> {
+    let provider = cloud::Provider::from_id(&provider).ok_or("unknown provider")?;
+    let key = key.trim().to_string();
+    let check = key.clone();
+    let models = tauri::async_runtime::spawn_blocking(move || cloud::models(provider, &check))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    cloud::set_key(provider, &key).map_err(|e| e.to_string())?;
+    let mut s = engine.settings.lock().unwrap();
+    s.ai_provider = provider.id().into();
+    s.cloud_model = models.first().cloned();
+    drop(s);
+    engine.save_settings();
+    engine.log(format!("API key saved for {}", provider.id()));
+    Ok(())
+}
+
+#[tauri::command]
+fn forget_api_key(engine: State<'_, Arc<Engine>>, provider: String) -> Result<(), String> {
+    let provider = cloud::Provider::from_id(&provider).ok_or("unknown provider")?;
+    cloud::delete_key(provider);
+    let mut s = engine.settings.lock().unwrap();
+    if s.ai_provider == provider.id() {
+        s.ai_provider = "ollama".into();
+        s.cloud_model = None;
+    }
+    drop(s);
+    engine.save_settings();
+    Ok(())
+}
+
 /// Installed Ollama models (asked off the main thread: Ollama may take a moment or be off).
 #[tauri::command]
 async fn ai_models() -> Vec<String> {
@@ -155,7 +214,7 @@ fn set_setting(app: AppHandle, engine: State<'_, Arc<Engine>>, key: String, valu
     let text = value.as_str().map(String::from);
     let warm_ai = || {
         let s = engine.settings();
-        if s.ai_mode.is_some() {
+        if s.ai_mode.is_some() && s.ai_provider == "ollama" {
             thread::spawn(move || ai::warm(&s.ai_model));
         }
     };
@@ -174,6 +233,17 @@ fn set_setting(app: AppHandle, engine: State<'_, Arc<Engine>>, key: String, valu
             engine.settings.lock().unwrap().ai_model = text.unwrap_or_default();
             warm_ai();
         }
+        "ai_provider" => {
+            let provider = text.filter(|p| p == "ollama" || cloud::Provider::from_id(p).is_some()).ok_or("unknown provider")?;
+            let mut s = engine.settings.lock().unwrap();
+            if s.ai_provider != provider {
+                s.ai_provider = provider;
+                s.cloud_model = None; // each provider has its own models
+            }
+            drop(s);
+            warm_ai();
+        }
+        "cloud_model" => engine.settings.lock().unwrap().cloud_model = text.filter(|m| !m.is_empty()),
         "mic" => engine.settings.lock().unwrap().mic = text.filter(|m| !m.is_empty()),
         "language" => engine.settings.lock().unwrap().language = text.filter(|l| !l.is_empty()),
         "sounds" => engine.settings.lock().unwrap().sounds = value.as_bool().unwrap_or(false),
@@ -536,7 +606,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .invoke_handler(tauri::generate_handler![
-            get_state, ai_models, set_setting, open_data_file,
+            get_state, ai_models, set_setting, open_data_file, cloud_state, save_api_key, forget_api_key,
             get_catalog, download_model, cancel_download, use_model, pull_ai_model, open_link, get_level, missing_permissions, open_permission_settings,
             set_speech_languages, set_tray_labels, get_dictionary, save_dictionary, finish_onboarding
         ])

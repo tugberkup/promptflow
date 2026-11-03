@@ -15,9 +15,14 @@ pub struct Settings {
     pub language: Option<String>,
     /// Part of a microphone name; None = system default
     pub mic: Option<String>,
-    /// "clean", "prompt", or None for raw
+    /// "clean", or None for raw. 1.x and early 2.0 also had "prompt", which now reads as "clean".
     pub ai_mode: Option<String>,
+    /// Ollama model for Clean mode
     pub ai_model: String,
+    /// Where Clean mode runs: "ollama", "anthropic", "google" or "openai" (API keys are in the OS keychain)
+    pub ai_provider: String,
+    /// The cloud model; None = the provider's fast default
+    pub cloud_model: Option<String>,
     pub sounds: bool,
     /// File name of the Whisper model in the models folder
     pub speech_model: String,
@@ -40,6 +45,8 @@ impl Default for Settings {
             mic: None,
             ai_mode: Some("clean".into()),
             ai_model: "gemma3:12b".into(),
+            ai_provider: "ollama".into(),
+            cloud_model: None,
             sounds: false,
             speech_model: "ggml-large-v3-turbo-q5_0.bin".into(),
             restore_clipboard: true,
@@ -59,6 +66,9 @@ impl Settings {
             .unwrap_or_default();
         if !hotkey::is_valid(&settings.hotkey) {
             settings.hotkey = hotkey::DEFAULT_HOTKEY.into(); // e.g. a settings file from the other OS
+        }
+        if settings.ai_mode.as_deref() == Some("prompt") {
+            settings.ai_mode = Some("clean".into()); // Prompt mode is gone; Clean keeps what was meant
         }
         settings
     }
@@ -81,9 +91,18 @@ mod tests {
         let s: Settings = serde_json::from_str(old).unwrap();
         assert_eq!(s.language.as_deref(), Some("tr"));
         assert_eq!(s.ai_mode.as_deref(), Some("prompt"));
+        assert_eq!(s.ai_provider, "ollama");
         assert_eq!(s.mic.as_deref(), Some("QuadCast"));
         assert_eq!(s.speech_model, Settings::default().speech_model);
         let raw: Settings = serde_json::from_str(r#"{"AI_MODE": null}"#).unwrap();
         assert_eq!(raw.ai_mode, None);
+    }
+
+    #[test]
+    fn prompt_mode_becomes_clean() {
+        let path = std::env::temp_dir().join("pf-settings-prompt-mode.json");
+        fs::write(&path, r#"{"AI_MODE": "prompt"}"#).unwrap();
+        assert_eq!(Settings::load(&path).ai_mode.as_deref(), Some("clean"));
+        let _ = fs::remove_file(&path);
     }
 }

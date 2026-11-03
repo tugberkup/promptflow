@@ -204,7 +204,7 @@ impl Engine {
     fn keep_ai_warm(&self) {
         loop {
             let s = self.settings();
-            if s.ai_mode.is_some() {
+            if s.ai_mode.is_some() && s.ai_provider == "ollama" {
                 match ai::warm(&s.ai_model) {
                     Ok(()) => self.log(format!("AI ready: {} ({})", s.ai_model, s.ai_mode.unwrap_or_default())),
                     Err(e) => self.log(format!("[warning] Can't reach Ollama, cleanup is skipped: {e}")),
@@ -311,7 +311,21 @@ impl Engine {
         }
         let lang = s.language.clone().or_else(|| (!lang.is_empty()).then_some(lang));
         let final_text = match &s.ai_mode {
-            Some(mode) => ai::polish(&raw, mode, &s.ai_model, lang.as_deref(), &|m| self.log(m)),
+            Some(_) => {
+                let cloud_model = s.cloud_model.clone().unwrap_or_default();
+                let backend = match crate::cloud::Provider::from_id(&s.ai_provider) {
+                    Some(provider) => ai::Backend::Cloud { provider, model: &cloud_model },
+                    None => ai::Backend::Ollama { model: &s.ai_model },
+                };
+                match ai::clean(&raw, &backend, lang.as_deref(), &|m| self.log(m)) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        self.log(format!("  [AI error] {e}"));
+                        self.emit_error("ai_cloud", e);
+                        raw.clone()
+                    }
+                }
+            }
             None => raw.clone(),
         };
         let t2 = Instant::now();
