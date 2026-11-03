@@ -497,7 +497,15 @@ fn open_permission_settings(name: String) -> Result<(), String> {
 /// Opens a link in the browser (only the few the window uses).
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
-    if !url.starts_with("https://ollama.com/") && !url.starts_with("https://github.com/tugberkup/promptflow") {
+    const ALLOWED: &[&str] = &[
+        "https://ollama.com/",
+        "https://github.com/tugberkup/promptflow",
+        // where each provider hands out API keys
+        "https://console.anthropic.com/settings/keys",
+        "https://aistudio.google.com/apikey",
+        "https://platform.openai.com/api-keys",
+    ];
+    if !ALLOWED.iter().any(|a| url.starts_with(a)) {
         return Err("not allowed".into());
     }
     opener::open_browser(&url).map_err(|e| e.to_string())

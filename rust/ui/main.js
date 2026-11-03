@@ -299,7 +299,82 @@ async function renderCatalog(reload = true) {
 }
 
 // ---------------- AI cleanup ----------------
+const PROVIDERS = {
+  anthropic: { name: "Anthropic", keys: "https://console.anthropic.com/settings/keys" },
+  google: { name: "Google", keys: "https://aistudio.google.com/apikey" },
+  openai: { name: "OpenAI", keys: "https://platform.openai.com/api-keys" },
+};
+
 async function renderAi() {
+  const provider = state.settings.AI_PROVIDER || "ollama";
+  $("ai-provider").value = provider;
+  $("ai-local").hidden = provider !== "ollama";
+  $("ai-cloud").hidden = provider === "ollama";
+  if (provider === "ollama") await renderLocalAi();
+  else await renderCloudAi(provider);
+}
+
+async function renderCloudAi(provider) {
+  const info = PROVIDERS[provider];
+  $("ai-cloud-note").textContent = t("ai.cloud_note", { provider: info.name });
+  const status = $("ai-key-status");
+  const actions = $("ai-key-actions");
+  status.className = "small";
+  status.textContent = t("ai.key_checking");
+  actions.replaceChildren();
+  fillSelect($("ai-cloud-model"), [], "");
+  const cloud = await invoke("cloud_state", { provider });
+  if ($("ai-provider").value !== provider) return; // switched away meanwhile
+
+  if (cloud.has_key) {
+    const store = t(state.os === "macos" ? "ai.store.macos" : "ai.store.windows");
+    status.textContent = cloud.error ? t("ai.key_error", { error: cloud.error }) : t("ai.key_saved", { store });
+    if (cloud.error) status.className = "small error-text";
+    const remove = el("button", "btn", t("ai.key_remove"));
+    remove.onclick = async () => {
+      await invoke("forget_api_key", { provider });
+      state.settings.CLOUD_MODEL = null;
+      renderCloudAi(provider);
+    };
+    actions.append(remove);
+    const model = cloud.model && cloud.models.includes(cloud.model) ? cloud.model : cloud.models[0] || "";
+    fillSelect($("ai-cloud-model"), cloud.models.map((m) => [m, m]), model);
+    if (model && model !== cloud.model) set("cloud_model", model);
+    state.settings.CLOUD_MODEL = model || null;
+    return;
+  }
+
+  status.textContent = "";
+  const input = el("input");
+  input.type = "password";
+  input.placeholder = t("ai.key_placeholder");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  const save = el("button", "btn primary", t("ai.key_save"));
+  const get = el("button", "link", t("ai.key_get"));
+  get.onclick = () => invoke("open_link", { url: info.keys });
+  const submit = async () => {
+    if (!input.value.trim()) return;
+    save.disabled = true;
+    status.className = "small";
+    status.textContent = t("ai.key_checking");
+    try {
+      await invoke("save_api_key", { provider, key: input.value });
+      input.value = "";
+      state.settings.AI_PROVIDER = provider;
+      renderCloudAi(provider);
+    } catch (e) {
+      status.className = "small error-text";
+      status.textContent = t("ai.key_error", { error: String(e) });
+      save.disabled = false;
+    }
+  };
+  save.onclick = submit;
+  input.onkeydown = (e) => e.key === "Enter" && submit();
+  actions.append(input, save, get);
+}
+
+async function renderLocalAi() {
   if (!catalog) await loadCatalog();
   const installed = await invoke("ai_models");
   const current = state.settings.AI_MODEL;
@@ -500,6 +575,17 @@ function wire() {
   $("ai-model").onchange = (e) => {
     state.settings.AI_MODEL = e.target.value;
     set("ai_model", e.target.value);
+  };
+  $("ai-provider").onchange = async (e) => {
+    const provider = e.target.value;
+    if (provider !== state.settings.AI_PROVIDER) state.settings.CLOUD_MODEL = null;
+    state.settings.AI_PROVIDER = provider;
+    await set("ai_provider", provider);
+    renderAi();
+  };
+  $("ai-cloud-model").onchange = (e) => {
+    state.settings.CLOUD_MODEL = e.target.value;
+    set("cloud_model", e.target.value);
   };
   $("hotkey").onchange = (e) => {
     state.settings.HOTKEY = e.target.value;

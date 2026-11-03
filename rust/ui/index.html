@@ -56,7 +56,6 @@
       <div class="section-title" data-i18n="settings.mode"></div>
       <div class="modes" id="mode">
         <button class="mode" data-value="clean"><strong data-i18n="mode.clean"></strong><span data-i18n="mode.clean.hint"></span></button>
-        <button class="mode" data-value="prompt"><strong data-i18n="mode.prompt"></strong><span data-i18n="mode.prompt.hint"></span></button>
         <button class="mode" data-value="raw"><strong data-i18n="mode.raw"></strong><span data-i18n="mode.raw.hint"></span></button>
       </div>
 
@@ -103,12 +102,39 @@
       <header><h1 data-i18n="nav.ai"></h1><p class="muted" data-i18n="ai.page_hint"></p></header>
       <div class="group">
         <div class="row">
-          <div class="label"><span data-i18n="settings.ai_model"></span><span class="small" id="ai-status"></span></div>
-          <select id="ai-model"></select>
+          <span data-i18n="ai.provider"></span>
+          <select id="ai-provider">
+            <option value="ollama" data-i18n="ai.provider.ollama"></option>
+            <option value="anthropic">Anthropic Claude</option>
+            <option value="google">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+          </select>
         </div>
       </div>
-      <div class="section-title" data-i18n="ai.suggestion"></div>
-      <div class="group" id="ai-box" style="padding: 14px 16px"></div>
+      <div id="ai-local">
+        <p class="muted small reason" data-i18n="ai.local_note"></p>
+        <div class="group" style="margin-top: 12px">
+          <div class="row">
+            <div class="label"><span data-i18n="settings.ai_model"></span><span class="small" id="ai-status"></span></div>
+            <select id="ai-model"></select>
+          </div>
+        </div>
+        <div class="section-title" data-i18n="ai.suggestion"></div>
+        <div class="group" id="ai-box" style="padding: 14px 16px"></div>
+      </div>
+      <div id="ai-cloud" hidden>
+        <p class="muted small reason" id="ai-cloud-note"></p>
+        <div class="group" style="margin-top: 12px">
+          <div class="row" id="ai-key-row">
+            <div class="label"><span data-i18n="ai.api_key"></span><span class="small" id="ai-key-status"></span></div>
+            <div class="key-actions" id="ai-key-actions"></div>
+          </div>
+          <div class="row">
+            <span data-i18n="ai.cloud_model"></span>
+            <select id="ai-cloud-model"></select>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Dictionary -->

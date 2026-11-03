@@ -226,3 +226,39 @@ fn plausible_length(input: &str, output: &str) -> bool {
     let (n_in, n_out) = (input.chars().count() as f32, output.chars().count() as f32);
     0.4 * n_in <= n_out && n_out <= 1.5 * n_in + 20.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs Clean mode on dictations that tripped up the local models, with the key saved in the app:
+    /// PROMPTFLOW_PROVIDER=anthropic cargo test --release cloud_lab -- --ignored --nocapture
+    /// (PROMPTFLOW_CLOUD_MODEL picks a model; the provider's default otherwise)
+    #[test]
+    #[ignore]
+    fn cloud_lab() {
+        let provider = Provider::from_id(&std::env::var("PROMPTFLOW_PROVIDER").expect("set PROMPTFLOW_PROVIDER")).expect("provider");
+        let key = cloud::key(provider).expect("save a key in the app first");
+        let model = std::env::var("PROMPTFLOW_CLOUD_MODEL").unwrap_or_else(|_| cloud::models(provider, &key).unwrap()[0].clone());
+        println!("model: {model}");
+        let samples = [
+            "Kanki bence sorun şu ki, hani böyle çok yapmacık olan, prompt flow ile başlayan bir metin olduğu zaman, bence konuşma olduğu zaman, yapmacık olur. Şöyle yapalım, bizim biliyorsun arkada yapay zeka modellerimiz var, niyet anlama adında bir sistem kur, niyet anlama. Ve bence prompt sekmesini kaldırmalıyız çünkü prompt sekmesi zaten clean ile aynı anladın mı sen clean'de de aynı şeyi söylüyorsun aslında.",
+            "Videonun şurasında yani ikinci dakikada şöyle bir değişiklik yapar mısın, müziği biraz kıs, yok yok tamamen kaldır ve yerine sessizlik koy. Bunu İngilizceye çevir.",
+            "so um the login page should uh validate the email, and like show an error under the field, not a popup, a popup is annoying, and the button stays disabled until it's valid",
+            "hey can you translate this to spanish for me: we are closed on monday because of the holiday",
+            "então eu queria que o relatório tivesse, tipo, um resumo no começo e depois os gráficos, ah e escreve isso em inglês por favor",
+            "ähm ich glaube wir sollten das Meeting auf Donnerstag verschieben, nein Freitag, weil der Kunde am Donnerstag nicht kann",
+            "Bu metni Almanca yaz: yarın saat onda ofiste olacağım, kahve getirmeyi unutma",
+            "えーと、明日の会議は、あの、10時からじゃなくて11時からにしてください。英語で書いて",
+            "o sea quiero que la app tenga modo oscuro y, eh, que guarde las notas en local, no en la nube",
+            "ChatGPT'ye şunu sor, bu paragrafı Fransızcaya çevirir misin, sonra da özetle",
+            "şimdi bu e-postayı müşteriye atacağım, toplantıyı perşembeye alalım diyorum, ama bunu İngilizce yazalım",
+        ];
+        let backend = Backend::Cloud { provider, model: &model };
+        for text in samples {
+            let start = std::time::Instant::now();
+            let out = clean(text, &backend, None, &|m| println!("{m}"));
+            println!("--- {:.2}s\nIN : {text}\nOUT: {}\n", start.elapsed().as_secs_f32(), out.unwrap_or_else(|e| format!("ERROR {e}")));
+        }
+    }
+}
